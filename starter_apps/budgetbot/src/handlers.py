@@ -156,3 +156,12 @@ def handle_summary(user_id: str, month: Optional[str], userstore) -> dict:
 
 def handle_list_transactions(user_id: str, month: Optional[str], userstore) -> dict:
     return {"user_id": user_id, "month": month, "transactions": userstore.list_transactions(user_id, month=month)}
+
+
+def handle_update_category(user_id: str, txn_id: int, new_category: str, userstore) -> dict:
+    userstore.update_category(user_id, txn_id, new_category)
+    return {"status": "success"}
+
+def handle_clear_transactions(user_id: str, userstore) -> dict:
+    userstore.clear_transactions(user_id)
+    return {"status": "success"}

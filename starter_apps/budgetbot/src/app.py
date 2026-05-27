@@ -96,6 +96,27 @@ def transactions(
     return handlers.handle_list_transactions(_resolve_user_id(x_user_id), month, userstore)
 
 
+from pydantic import BaseModel
+
+class CategoryUpdate(BaseModel):
+    category: str
+
+@app.patch("/transactions/{txn_id}")
+def update_category(
+    txn_id: int,
+    data: CategoryUpdate,
+    x_user_id: Optional[str] = Header(default=None),
+) -> dict:
+    return handlers.handle_update_category(_resolve_user_id(x_user_id), txn_id, data.category, userstore)
+
+
+@app.delete("/transactions")
+def clear_transactions(
+    x_user_id: Optional[str] = Header(default=None),
+) -> dict:
+    return handlers.handle_clear_transactions(_resolve_user_id(x_user_id), userstore)
+
+
 # ---- Static frontend ----
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 

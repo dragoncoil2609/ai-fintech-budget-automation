@@ -87,7 +87,7 @@ class PostgresUserStore:
             )
 
     def list_transactions(self, user_id: str, month: str | None = None) -> list:
-        sql = "SELECT txn_date, description, amount, category, confidence FROM transactions WHERE user_id = %s"
+        sql = "SELECT id, txn_date, description, amount, category, confidence FROM transactions WHERE user_id = %s"
         params: list = [user_id]
         if month:
             sql += " AND to_char(txn_date, 'YYYY-MM') = %s"
@@ -96,9 +96,20 @@ class PostgresUserStore:
         with self.conn.cursor() as cur:
             cur.execute(sql, params)
             return [
-                {"date": str(r[0]), "description": r[1], "amount": float(r[2]), "category": r[3], "confidence": r[4]}
+                {"id": r[0], "date": str(r[1]), "description": r[2], "amount": float(r[3]), "category": r[4], "confidence": r[5]}
                 for r in cur.fetchall()
             ]
+
+    def update_category(self, user_id: str, txn_id: int, new_category: str) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "UPDATE transactions SET category = %s, confidence = 'high' WHERE user_id = %s AND id = %s",
+                (new_category, user_id, txn_id)
+            )
+
+    def clear_transactions(self, user_id: str) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute("DELETE FROM transactions WHERE user_id = %s", (user_id,))
 
     def summary(self, user_id: str, month: str | None = None) -> dict:
         sql = "SELECT category, SUM(amount), COUNT(*) FROM transactions WHERE user_id = %s"
@@ -145,7 +156,7 @@ class SQLiteUserStore:
         self.conn.commit()
 
     def list_transactions(self, user_id: str, month: str | None = None) -> list:
-        sql = "SELECT txn_date, description, amount, category, confidence FROM transactions WHERE user_id = ?"
+        sql = "SELECT id, txn_date, description, amount, category, confidence FROM transactions WHERE user_id = ?"
         params: list = [user_id]
         if month:
             sql += " AND substr(txn_date, 1, 7) = ?"
@@ -153,9 +164,20 @@ class SQLiteUserStore:
         sql += " ORDER BY txn_date DESC"
         cur = self.conn.execute(sql, params)
         return [
-            {"date": r[0], "description": r[1], "amount": r[2], "category": r[3], "confidence": r[4]}
+            {"id": r[0], "date": r[1], "description": r[2], "amount": r[3], "category": r[4], "confidence": r[5]}
             for r in cur.fetchall()
         ]
+
+    def update_category(self, user_id: str, txn_id: int, new_category: str) -> None:
+        self.conn.execute(
+            "UPDATE transactions SET category = ?, confidence = 'high' WHERE user_id = ? AND id = ?",
+            (new_category, user_id, txn_id)
+        )
+        self.conn.commit()
+
+    def clear_transactions(self, user_id: str) -> None:
+        self.conn.execute("DELETE FROM transactions WHERE user_id = ?", (user_id,))
+        self.conn.commit()
 
     def summary(self, user_id: str, month: str | None = None) -> dict:
         return _aggregate(self.list_transactions(user_id, month))
