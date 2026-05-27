@@ -14,15 +14,53 @@ CATEGORIES = [
 ]
 
 
-CATEGORIZE_PROMPT = """Categorize the following bank transaction into exactly one category.
+CATEGORIZE_PROMPT = """You are an AI Money Coach. Categorize the following bank transaction into exactly one category.
 Categories: {categories}
 
+Rules:
+1. If the description is a cryptic opaque code (e.g., "FT0024112501 ID:0001") with no obvious meaning, set category to "Other" and confidence to "low".
+2. If it is ambiguous (e.g., "VINMART HCM 04" could be Food or Shopping), pick the most likely one and set confidence to "medium".
+3. If it is clear (e.g., "NETFLIX"), set category and set confidence to "high".
+4. If amount is positive and it's not a refund, it might be "Income".
+
+Examples:
+Transaction: "T1908 GRAB CITY"
+Amount: -50000
+Date: 2026-04-05
+Output: {{"category": "Transport", "confidence": "medium"}}
+
+Transaction: "MACBOOK PRO 14 SHOPEE"
+Amount: -35000000
+Date: 2026-04-10
+Output: {{"category": "Shopping", "confidence": "medium"}}
+
+Transaction: "FT0024112501 ID:0001"
+Amount: -250000
+Date: 2026-04-12
+Output: {{"category": "Other", "confidence": "low"}}
+
+Transaction: "VINMART HCM 04"
+Amount: -120000
+Date: 2026-04-15
+Output: {{"category": "Food", "confidence": "medium"}}
+
+Transaction: "NETFLIX SUBSCRIPTION"
+Amount: -250000
+Date: 2026-04-20
+Output: {{"category": "Subscriptions", "confidence": "high"}}
+
+Transaction: "SALARY MAY"
+Amount: 20000000
+Date: 2026-04-30
+Output: {{"category": "Income", "confidence": "high"}}
+
+Now categorize this transaction:
 Transaction: "{description}"
 Amount: {amount}
 Date: {date}
 
 Respond with JSON only. No explanation.
-{{"category": "<category>", "confidence": "high|medium|low"}}"""
+"""
 
 
 def _parse_json_response(text: str) -> dict:

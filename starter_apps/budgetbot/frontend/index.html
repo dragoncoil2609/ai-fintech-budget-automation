@@ -706,9 +706,12 @@
       <thead><tr><th>Date</th><th>Description</th><th>Category</th><th style="text-align:right;">Amount</th></tr></thead>
       <tbody>
         ${t.slice(0, 50).map(r => `
-          <tr>
+          <tr ${r.confidence === 'low' ? 'style="background: #fffbeb;"' : ''}>
             <td>${r.date}</td>
-            <td>${(r.description || '').slice(0, 50)}</td>
+            <td>
+              ${(r.description || '').slice(0, 50)}
+              ${r.confidence === 'low' ? '<span title="Low confidence. Needs review." style="cursor:help; margin-left:5px;">⚠️</span>' : ''}
+            </td>
             <td><span class="cat-pill">${r.category}</span></td>
             <td class="amt ${r.amount < 0 ? 'neg' : 'pos'}">${r.amount >= 0 ? '+' : ''}${fmt(r.amount)}</td>
           </tr>
