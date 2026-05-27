@@ -46,19 +46,29 @@ def handle_upload(
     key = f"{user_id}/{filename}"
     location = storage.put(key, data)
     rows = _parse_csv(data)
-    inserted = 0
-    samples = []
-    for row in rows:
+    import concurrent.futures
+
+    def process_row(row):
         cat_result = ai_client.categorize(
             description=row["description"], amount=row["amount"], date=row["date"]
         )
-        txn = {
+        return {
             "date": row["date"],
             "description": row["description"],
             "amount": row["amount"],
             "category": cat_result["category"],
             "confidence": cat_result["confidence"],
         }
+
+    inserted = 0
+    samples = []
+    
+    # Gọi AI song song cho tất cả các dòng (tối đa 20 luồng cùng lúc)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        categorized_txns = list(executor.map(process_row, rows))
+        
+    # Lưu vào database tuần tự để tránh lỗi quá tải hoặc xung đột connection (psycopg2 không thread-safe)
+    for txn in categorized_txns:
         userstore.add_transaction(user_id, txn)
         inserted += 1
         if len(samples) < 5:
