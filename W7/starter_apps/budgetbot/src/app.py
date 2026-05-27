@@ -6,12 +6,26 @@ from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.config import config
-from src.adapters import factory
-from src import handlers
+from .config import config
+from .adapters import factory
+from . import handlers
+
+# Import Mangum to wrap FastAPI for AWS Lambda
+try:
+    from mangum import Mangum  # type: ignore
+except ImportError:
+    Mangum = None
 
 
 app = FastAPI(title="BudgetBot — W7 Capstone Starter")
+
+
+@app.middleware("http")
+async def strip_api_prefix(request, call_next):
+    path = request.scope.get("path", "")
+    if path.startswith("/api"):
+        request.scope["path"] = path[4:] or "/"
+    return await call_next(request)
 
 
 # CORS — allow frontend to live on a different origin (CloudFront / Amplify / separate ALB).
@@ -92,3 +106,7 @@ if config.serve_frontend:
         """Convenience: serves frontend/index.html at /. Set SERVE_FRONTEND=false
         if you deploy the frontend separately (CloudFront+S3, Amplify, ALB)."""
         return FileResponse(FRONTEND_DIR / "index.html")
+
+# AWS Lambda Handler
+if Mangum:
+    handler = Mangum(app)

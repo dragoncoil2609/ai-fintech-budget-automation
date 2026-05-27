@@ -1,5 +1,5 @@
-from src.config import config
-from src.adapters import ai, storage, userstore
+from ..config import config
+from . import ai, storage, userstore
 
 
 def make_ai():

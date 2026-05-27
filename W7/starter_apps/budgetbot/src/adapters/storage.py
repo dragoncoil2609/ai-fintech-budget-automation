@@ -1,24 +1,111 @@
 """Object storage adapters (raw uploaded CSVs/PDFs). Same interface as StudyBot."""
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class S3Storage:
     def __init__(self, bucket: str, region: str):
         import boto3
+        from botocore.config import Config
+
         if not bucket:
             raise ValueError("STORAGE_BUCKET must be set for S3 backend")
-        self.s3 = boto3.client("s3", region_name=region)
+
+        if not region:
+            region = "us-west-2"
+
+        self.s3 = boto3.client(
+            "s3",
+            region_name=region,
+            config=Config(
+                connect_timeout=10,
+                read_timeout=30,
+                retries={
+                    "max_attempts": 2,
+                    "mode": "standard"
+                },
+                s3={
+                    "addressing_style": "virtual"
+                }
+            )
+        )
+
         self.bucket = bucket
 
+        logger.info({
+            "event": "s3_client_created",
+            "bucket": self.bucket,
+            "region": self.s3.meta.region_name,
+            "endpoint_url": self.s3.meta.endpoint_url
+        })
+
     def put(self, key: str, data: bytes) -> str:
-        self.s3.put_object(Bucket=self.bucket, Key=key, Body=data)
-        return f"s3://{self.bucket}/{key}"
+        logger.info({
+            "event": "s3_put_start",
+            "bucket": self.bucket,
+            "key": key,
+            "bytes": len(data),
+            "region": self.s3.meta.region_name,
+            "endpoint_url": self.s3.meta.endpoint_url
+        })
+
+        try:
+            self.s3.put_object(
+                Bucket=self.bucket,
+                Key=key,
+                Body=data
+            )
+
+            logger.info({
+                "event": "s3_put_success",
+                "bucket": self.bucket,
+                "key": key
+            })
+
+            return f"s3://{self.bucket}/{key}"
+
+        except Exception as exc:
+            logger.exception({
+                "event": "s3_put_failed",
+                "bucket": self.bucket,
+                "key": key,
+                "bytes": len(data),
+                "region": self.s3.meta.region_name,
+                "endpoint_url": self.s3.meta.endpoint_url,
+                "error_type": type(exc).__name__,
+                "error": str(exc)
+            })
+            raise
 
     def get(self, key: str) -> bytes:
-        return self.s3.get_object(Bucket=self.bucket, Key=key)["Body"].read()
+        logger.info({
+            "event": "s3_get_start",
+            "bucket": self.bucket,
+            "key": key,
+            "region": self.s3.meta.region_name,
+            "endpoint_url": self.s3.meta.endpoint_url
+        })
+
+        return self.s3.get_object(
+            Bucket=self.bucket,
+            Key=key
+        )["Body"].read()
 
     def list(self, prefix: str = "") -> list:
-        resp = self.s3.list_objects_v2(Bucket=self.bucket, Prefix=prefix)
+        logger.info({
+            "event": "s3_list_start",
+            "bucket": self.bucket,
+            "prefix": prefix,
+            "region": self.s3.meta.region_name,
+            "endpoint_url": self.s3.meta.endpoint_url
+        })
+
+        resp = self.s3.list_objects_v2(
+            Bucket=self.bucket,
+            Prefix=prefix
+        )
         return [obj["Key"] for obj in resp.get("Contents", [])]
 
 
