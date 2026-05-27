@@ -1,0 +1,47 @@
+# Software License
+
+_Type: license_
+_Source: HuggingFace coastalcph/lex_glue (LEDGAR provisions)_
+_Tenant: tenant-initech_
+
+This document was assembled from 8 real contract
+provisions found in public SEC filings.
+
+
+## Section 1 — Warranties
+
+
+### 1.1
+
+The representations and warranties of the Parties in ARTICLE III and ARTICLE IV of this Agreement shall survive the Closing for a period of eighteen (18) months following the Closing Date; provided , however , that (i) the representations and warranties of the Seller Parties and Seller Parent contained in Sections 3.1 (Organization, Power and Authority of the Seller Parties), 3.2 (Membership Interests), 3.4 (Capitalization and Subsidiaries), 3.5 Ownership of Property), 3.8 (Tax Matters)and 3.14 (Financial Adviser) (the “ Seller Core Representations and Warranties ”) shall survive for the applicable statute of limitations with respect thereto, (ii) the representations and warranties of the Seller Parties and Seller Parent contained in Section 3.11 (Environmental Matters) shall survive the Closing for a period of three (3) years following the Closing Date and (iii) the representations and warranties of the Purchaser Parties contained in Sections 4.1 (Organization, Power and Authority of the Purchaser Parties) and 4.3 (Financial Advisor) (the “ Purchaser Core Representations and Warranties ” and, together with the Seller Core Representations and Warranties, the “ Core Representations and Warranties ”) shall survive for the applicable statute of limitations with respect thereto.
+
+
+### 1.2
+
+The Company represents and warrants to the Secured Party that (a) insofar as the Company obtained good title to the Collateral under the Purchase Agreement, the bill of sale and the other documents executed in connection therewith, the Company is the owner of the Collateral and that no other Person has any right, title, claim or interest (by way of Lien or otherwise) in, against or to the Collateral; and (b) upon the filing of UCC-1 financing statements in the appropriate filing offices, the Secured Party will have a perfected, first-priority security interest in the Collateral to the extent that a security interest in the Collateral can be perfected by such filing.
+
+
+## Section 2 — Indemnifications
+
+
+### 2.1
+
+In accordance with the limits set forth in the Vermont Business Corporations Law and Delaware General Corporations Law, as applicable, the Bank or any successor shall indemnify the Executive Officer as provided by the Articles of Association and Bylaws.
+
+
+### 2.2
+
+Each Guarantor agrees to pay or reimburse each Lender and the Administrative Agent for all its costs and expenses incurred in collecting against such Guarantor under the guarantee contained in Section 2 or otherwise enforcing or preserving any rights under this Agreement and the other Loan Documents to which such Guarantor is a party, including, without limitation, the fees and disbursements of outside counsel to each Lender and of outside counsel to the Administrative Agent.
+
+
+## Section 4 — Intellectual Property
+
+
+### 4.1
+
+Each of IHS and its Subsidiaries owns, or is licensed or otherwise has the right to use, all trademarks, tradenames, copyrights, patents and other intellectual property material to its business, and the use thereof by IHS and its Subsidiaries does not infringe upon the rights of any other Person, except for any such infringements that, individually or in the aggregate, could not reasonably be expected to result in a Material Adverse Effect.
+
+
+### 4.2
+
+When financing statements in the appropriate form are filed in the offices specified on Schedule 6 to the Perfection Certificate, the Patent Security Agreement, substantially in the form of Exhibit II to the Security Agreement, and the Trademark Security Agreement, substantially in the form of Exhibit III to the Security Agreement, is filed in the United States Patent and Trademark Office and the Copyright Security Agreement, substantially in the form of Exhibit IV to the Security Agreement, is filed in the United States Copyright Office, then, to the extent that Liens may be perfected by such filings, the Security Agreement shall constitute a fully perfected Lien on all right, title and interest of the grantors thereunder in the United States patents, trademarks, copyrights, licenses and other intellectual property rights covered in such agreements, in each case prior and superior in right to any other Person (it being understood that subsequent recordings in the United States Patent and Trademark Office and the United States Copyright Office may be necessary to perfect a lien on U.S. issued patents, patent applications, registered trademarks, trademark applications and copyrights acquired by the Loan Parties after the Closing Date).

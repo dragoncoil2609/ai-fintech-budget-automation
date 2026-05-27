@@ -1,0 +1,99 @@
+# Non Disclosure Agreement
+
+_Type: nda_
+_Source: HuggingFace coastalcph/lex_glue (LEDGAR provisions)_
+_Tenant: tenant-globex_
+
+This document was assembled from 8 real contract
+provisions found in public SEC filings.
+
+
+## Section 1 — Confidentiality
+
+
+### 1.1
+
+Notwithstanding anything herein to the contrary, to the extent that the Purchaser has executed or is otherwise bound by a confidentiality agreement in favor of the Company,  the Purchaser shall continue to be bound by such confidentiality agreement.
+
+
+### 1.2
+
+No Investor, directly or indirectly, and no Person acting on behalf of or pursuant to any understanding with any Investor, has engaged in any purchases or sales in the securities, including derivatives, of the Company (including, without limitation, any Short Sales (a “ Transaction ”) involving any of the Company’s securities) since the time that such Investor was first contacted by the Company, the Agents or any other Person regarding an investment in the Company. Such Investor covenants that neither it nor any Person acting on its behalf or pursuant to any understanding with such Investor will engage, directly or indirectly, in any Transactions in the securities of the Company (including Short Sales) prior to the time the transactions contemplated by this Agreement are publicly disclosed.  “Short Sales” include, without limitation, all “short sales” as defined in Rule 200 promulgated under Regulation SHO under the Exchange Act and all types of direct and indirect stock pledges, forward sale contracts, options, puts, calls, short sales, swaps, derivatives and similar arrangements (including on a total return basis), and sales and other transactions through non-U.S. broker-dealers or foreign regulated brokers.
+
+
+## Section 2 — Definitions
+
+
+### 2.1
+
+All references to the singular shall be deemed to include the plural and vice versa where the context so requires.
+
+
+### 2.2
+
+Certain terms used in this Agreement are defined in this Section 1.1 .  These terms, and the additional terms defined above, shall have the meanings assigned wherever the terms appear in this Agreement. These meanings are also applicable to the singular and plural forms of the terms defined.
+
+
+## Section 3 — Use Of Proceeds
+
+
+### 3.1
+
+Borrower shall use proceeds of the Loan to (a) make initial deposits of the Reserve Funds, (b) make distributions to Equity Owner, (c) pay costs and expenses incurred in connection with the closing of the Loan and any related Securitization, and (d) to the extent any proceeds remain after satisfying clauses (a) through (c) above, for such lawful purpose as Borrower shall designate.
+
+
+### 3.2
+
+The proceeds of the Term Loan will be used for general partnership, corporate or company purposes, as applicable, of the Loan Parties and their Subsidiaries, including, without limitation, acquisitions.
+
+
+## Section 4 — Notices
+
+
+### 4.1
+
+Except as set forth in Section 1 above, all notices, demands, requests, consents or other communications hereunder shall be in writing and shall be given by personal delivery, by express courier, by registered or certified mail with return receipt requested, or by facsimile, to the Guarantor and the Beneficiaries at the addresses shown below, or to such other address as may be designated by written notice given by the applicable Person to the others. Unless conclusively proved otherwise, all notices, demands, requests, consents or other communications hereunder shall be deemed effective upon delivery if personally delivered, five (5) days after dispatch if sent by express courier, fourteen (14) days after dispatch if sent by registered or certified mail with return receipt requested, or confirmation of the receipt of the facsimile by the recipient if sent by facsimile.
+
+
+### 4.2
+
+All notices or other communications required hereunder shall be in writing and shall be deemed duly given: (a) when delivered in person (with receipt therefor); (b) on the next business day after deposit with a recognized overnight delivery service; (c) on the third (3rd) business day after being sent by certified or registered mail, return receipt requested, postage prepaid, to addresses of Landlord and Tenant set forth in Section 1; or (d) when delivered via electronic transmission, including email, to the addresses of Landlord and Tenant set forth in Section 1.  Either party may change its address for the giving of notices by notice given in accordance with this Section. A party's refusal to accept delivery of any notice or communication sent by the other party shall not render such notice ineffective. Notwithstanding the foregoing, all bills, statements, invoices or other communications from Landlord to Tenant with respect to Rent may be sent to Tenant by regular United States mail.
+
+
+## Section 6 — Counterparts
+
+
+### 6.1
+
+This Agreement may be executed and delivered (including by facsimile transmission or portable document format (“.pdf”)) in one or more counterparts, and by the Parties hereto in separate counterparts, each of which when executed shall be deemed to be an original, but all of which taken together shall constitute one and the same agreement.
+
+
+### 6.2
+
+This First Amendment may be executed in any number of counterparts and by each of the undersigned on separate counterparts, and each such counterpart shall be deemed to be an original, but all such counterparts when taken together shall constitute but one and the same First Amendment. Signatures to this First Amendment transmitted in .pdf (portable document format) via electronic mail or other electronic means shall be treated as originals in all respects for purposes of this First Amendment. Seller and Buyer further agree that the acknowledgement of this First Amendment by Escrow Agent is not required for this First Amendment to be binding and effective as between Seller and Buyer.
+
+
+## Section 7 — Severability
+
+
+### 7.1
+
+The validity or unenforceability of any provision or provisions of this Agreement shall not affect the validity or enforceability of any other provision hereof, which will remain in full force and effect.  Should a court or other body of competent jurisdiction determine that any provision of this Agreement is excessive in scope or otherwise illegal, invalid, void or unenforceable, such provision shall be adjusted rather than voided, if possible, so that it is enforceable to the maximum extent possible.
+
+
+### 7.2
+
+The parties hereto intend and believe that each provision of this Note comports with all applicable local, state and federal laws and judicial decisions. However, if any provision or any portion of any provision contained in this Note is held by a court of law to be invalid, illegal, unlawful, void or unenforceable as written in any respect, then it is the intent of all parties hereto that such portion or provision shall be given force to the fullest possible extent that it is legal, valid and enforceable, that the remainder of the Note shall be construed as if such illegal, invalid, unlawful, void or unenforceable portion or provision was not contained therein, and the rights, obligations and interests of Maker and Holder under the remainder of this Note shall continue in full force and effect.
+
+
+## Section 8 — Waivers
+
+
+### 8.1
+
+Failure or delay on the part of either party hereto to enforce any right, power or privilege hereunder shall not be deemed to constitute a waiver thereof. Additionally, a waiver by either party or a breach of any promise hereof by the other party shall not operate as or be construed to constitute a waiver of any subsequent waiver by such other party.
+
+
+### 8.2
+
+No waiver by either party at any time of any breach by the other party of, or compliance with, any condition or provision of this Agreement to be performed by the other party, shall be deemed a waiver of any similar or dissimilar provisions or conditions at the same time or any prior or subsequent time.

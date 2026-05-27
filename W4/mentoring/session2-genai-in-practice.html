@@ -1,0 +1,1876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GenAI in Practice</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,500&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --brand-orange: #fe7624;
+    --brand-orange-light: #f59120;
+    --brand-amber: #fbae42;
+    --brand-amber-mid: #fdc57a;
+    --brand-yellow: #fcd554;
+    --brand-navy: #1e293b;
+    --brand-navy-mid: #24338a;
+    --brand-blue: #007bc1;
+    --brand-cyan: #00b3d9;
+    --brand-blue-bright: #0283e5;
+
+    --text-primary: #1a1a1a;
+    --text-secondary: #4d4e4e;
+    --text-muted: #698695;
+    --border: #c4d5dd;
+    --border-light: #ebebeb;
+
+    --surface-white: #ffffff;
+    --surface-100: #fafafa;
+    --surface-card: #f9fafb;
+    --surface-warm: #f0eeed;
+    --surface-blue: #e3f0f7;
+    --surface-tint: #fff7ec;
+
+    --font-sans: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+    --title-size: clamp(2rem, 5.5vw, 4.25rem);
+    --h2-size: clamp(1.5rem, 3.5vw, 2.5rem);
+    --h3-size: clamp(1.1rem, 2.2vw, 1.6rem);
+    --body-size: clamp(0.8rem, 1.15vw, 1.05rem);
+    --small-size: clamp(0.7rem, 0.9vw, 0.85rem);
+    --mono-size: clamp(0.65rem, 0.9vw, 0.85rem);
+
+    --slide-padding: clamp(1.5rem, 4vw, 4rem);
+    --content-gap: clamp(0.75rem, 1.8vw, 1.8rem);
+    --element-gap: clamp(0.4rem, 1vw, 1rem);
+
+    --radius-sm: 10px;
+    --radius-md: 16px;
+    --radius-lg: 20px;
+    --radius-xl: 32px;
+    --radius-pill: 80px;
+
+    --shadow-card: 0 8px 17px rgba(29, 29, 29, 0.05);
+    --shadow-lg: 0 20px 40px rgba(30, 41, 59, 0.12);
+
+    --gradient-cta: linear-gradient(135deg, #ffc078 0%, #ff8800 100%);
+    --gradient-warm: linear-gradient(135deg, #fcd554 0%, #fe7624 60%, #f59120 100%);
+    --gradient-cool: linear-gradient(135deg, #007bc1 0%, #24338a 100%);
+
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    --duration-normal: 0.65s;
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+    height: 100%;
+    overflow-x: hidden;
+    font-family: var(--font-sans);
+    color: var(--text-primary);
+    background: var(--surface-100);
+    -webkit-font-smoothing: antialiased;
+}
+
+html {
+    scroll-snap-type: y mandatory;
+    scroll-behavior: smooth;
+}
+
+.slide {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    scroll-snap-align: start;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    padding: var(--slide-padding);
+    background: var(--surface-white);
+}
+
+.slide-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    max-height: 100%;
+    overflow: hidden;
+    gap: var(--content-gap);
+    max-width: 1440px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+h1, h2, h3, h4 {
+    font-family: var(--font-sans);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    color: var(--brand-navy);
+}
+h2 { font-size: var(--h2-size); font-weight: 700; }
+h3 { font-size: var(--h3-size); font-weight: 700; }
+p { font-size: var(--body-size); line-height: 1.55; color: var(--text-secondary); }
+
+.mono { font-family: var(--font-mono); font-size: var(--mono-size); }
+.accent-orange { color: var(--brand-orange); }
+.accent-blue { color: var(--brand-blue); }
+
+.eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--small-size);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--brand-orange);
+    padding: 6px 14px;
+    background: #ffd6a233;
+    border-radius: var(--radius-pill);
+    align-self: flex-start;
+}
+.eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand-orange); }
+
+.badge {
+    display: inline-block;
+    padding: 4px 12px;
+    font-size: var(--small-size);
+    font-weight: 600;
+    border-radius: var(--radius-pill);
+    background: var(--surface-blue);
+    color: var(--brand-blue);
+    letter-spacing: 0.04em;
+}
+.badge-amber { background: #ffd6a233; color: var(--brand-orange); }
+.badge-green { background: #92c83e22; color: #00ac4e; }
+.badge-purple { background: #85439a22; color: #85439a; }
+.badge-cyan { background: #00b3d922; color: #007a99; }
+.badge-red { background: #ef444422; color: #dc2626; }
+
+.grid {
+    display: grid;
+    gap: clamp(0.75rem, 1.2vw, 1.25rem);
+}
+.grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.grid-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+.card {
+    background: var(--surface-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: clamp(0.85rem, 1.4vw, 1.4rem);
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+    gap: clamp(0.3rem, 0.8vw, 0.7rem);
+    min-width: 0;
+}
+.card .card-title {
+    font-weight: 700;
+    font-size: var(--body-size);
+    color: var(--brand-navy);
+}
+.card .card-body {
+    font-size: var(--small-size);
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+.card-accent {
+    border: 1px solid var(--brand-orange-light);
+    background: linear-gradient(180deg, #ffffff 0%, #fff7ec 100%);
+}
+.card-dark {
+    background: var(--brand-navy);
+    border: 1px solid var(--brand-navy);
+    color: #ffffff;
+}
+.card-dark .card-title { color: #ffffff; }
+.card-dark .card-body { color: #c4d5dd; }
+.card-blue {
+    background: var(--surface-blue);
+    border: 1px solid var(--brand-blue);
+}
+.card-blue .card-title { color: var(--brand-navy-mid); }
+.card-blue .card-body { color: var(--text-secondary); }
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--small-size);
+    background: var(--surface-white);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+}
+th, td {
+    padding: clamp(0.5rem, 1vw, 0.85rem) clamp(0.6rem, 1.2vw, 1.1rem);
+    text-align: left;
+    border-bottom: 1px solid var(--border-light);
+    vertical-align: top;
+}
+th {
+    background: var(--brand-navy);
+    color: #ffffff;
+    font-weight: 700;
+    font-size: var(--small-size);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+tbody tr:nth-child(even) { background: var(--surface-card); }
+tbody tr:hover { background: #fff7ec; }
+td strong { color: var(--brand-navy); font-weight: 700; }
+
+.bullets {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(0.4rem, 0.9vw, 0.8rem);
+    list-style: none;
+}
+.bullets li {
+    display: flex;
+    gap: 0.7rem;
+    align-items: flex-start;
+    font-size: var(--body-size);
+    line-height: 1.5;
+    color: var(--text-primary);
+}
+.bullets li::before {
+    content: "";
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    margin-top: 0.55em;
+    border-radius: 2px;
+    background: var(--gradient-warm);
+}
+.bullets li strong { color: var(--brand-navy); font-weight: 700; }
+
+.two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(1rem, 2vw, 2rem);
+    align-items: stretch;
+}
+
+.flow {
+    display: flex;
+    align-items: stretch;
+    gap: clamp(0.4rem, 0.8vw, 0.8rem);
+    flex-wrap: nowrap;
+    justify-content: stretch;
+}
+.flow-step {
+    flex: 1;
+    min-width: 0;
+    background: var(--surface-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: clamp(0.5rem, 1vw, 1rem);
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+.flow-step .flow-num {
+    font-family: var(--font-mono);
+    font-size: var(--small-size);
+    color: var(--brand-orange);
+    font-weight: 700;
+}
+.flow-step .flow-title {
+    font-size: var(--body-size);
+    font-weight: 700;
+    color: var(--brand-navy);
+}
+.flow-step .flow-body {
+    font-size: var(--small-size);
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+.flow-arrow {
+    display: flex;
+    align-items: center;
+    color: var(--brand-orange);
+    font-size: 1.25rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(0.75rem, 1.5vw, 1.5rem);
+}
+.stat {
+    background: var(--surface-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: clamp(1rem, 1.8vw, 1.8rem);
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    box-shadow: var(--shadow-card);
+}
+.stat.featured {
+    background: var(--brand-navy);
+    border-color: var(--brand-navy);
+    color: #ffffff;
+    position: relative;
+    overflow: hidden;
+}
+.stat.featured::after {
+    content: "";
+    position: absolute;
+    inset: auto -20% -40% auto;
+    width: 80%; height: 80%;
+    background: var(--gradient-cta);
+    border-radius: 50%;
+    filter: blur(30px);
+    opacity: 0.35;
+}
+.stat .big-num {
+    font-size: clamp(2rem, 4vw, 3.5rem);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    background: var(--gradient-warm);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.stat.featured .big-num {
+    background: var(--gradient-cta);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.stat .stat-label {
+    font-size: var(--small-size);
+    color: var(--text-secondary);
+    font-weight: 500;
+    line-height: 1.4;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.stat.featured .stat-label { color: #c4d5dd; }
+.stat .stat-body {
+    font-size: var(--body-size);
+    color: var(--text-primary);
+    font-weight: 600;
+    line-height: 1.4;
+}
+.stat.featured .stat-body { color: #ffffff; }
+
+/* Title slide */
+.slide-title {
+    background:
+        radial-gradient(ellipse at 85% 10%, #fcd55466 0%, transparent 55%),
+        radial-gradient(ellipse at 10% 90%, #fe762422 0%, transparent 60%),
+        var(--surface-white);
+    justify-content: center;
+    overflow: hidden;
+}
+.slide-title .title-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(0.8rem, 2vw, 1.8rem);
+    max-width: 1200px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+}
+.slide-title h1 {
+    font-size: clamp(2.5rem, 7vw, 6rem);
+    font-weight: 800;
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    color: var(--brand-navy);
+}
+.slide-title h1 .gradient-text {
+    background: var(--gradient-warm);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: inline-block;
+}
+.slide-title .lead {
+    font-size: clamp(1rem, 1.8vw, 1.4rem);
+    color: var(--text-secondary);
+    max-width: 780px;
+    font-weight: 400;
+    line-height: 1.5;
+}
+.slide-title .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: clamp(0.5rem, 1.5vw, 1.5rem);
+    align-items: center;
+    margin-top: clamp(0.5rem, 1vw, 1rem);
+}
+.slide-title .meta-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6em;
+    padding: 10px 22px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: var(--surface-white);
+    font-weight: 600;
+    font-size: var(--small-size);
+    color: var(--brand-navy);
+    box-shadow: var(--shadow-card);
+}
+.slide-title .meta-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--brand-orange); }
+.slide-title .meta-chip.primary {
+    background: var(--gradient-cta);
+    color: #ffffff;
+    border-color: transparent;
+}
+.slide-title .meta-chip.primary .dot { background: #ffffff; }
+
+/* Section divider */
+.slide-divider {
+    background: var(--brand-navy);
+    color: #ffffff;
+    justify-content: center;
+    overflow: hidden;
+}
+.slide-divider::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(ellipse at 80% 30%, #fe762433 0%, transparent 55%),
+        radial-gradient(ellipse at 10% 80%, #00b3d922 0%, transparent 55%);
+    z-index: 0;
+}
+.slide-divider .divider-wrap {
+    position: relative;
+    z-index: 1;
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+}
+.slide-divider .section-num {
+    font-size: clamp(6rem, 18vw, 14rem);
+    font-weight: 800;
+    line-height: 0.85;
+    color: transparent;
+    -webkit-text-stroke: 2px #fe7624;
+    letter-spacing: -0.05em;
+    font-family: var(--font-sans);
+}
+.slide-divider h2 {
+    font-size: clamp(2.25rem, 5.5vw, 4rem);
+    color: #ffffff;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    max-width: 1000px;
+}
+.slide-divider h2 .accent { color: var(--brand-amber); }
+.slide-divider .divider-sub {
+    font-size: clamp(0.95rem, 1.5vw, 1.2rem);
+    color: #c4d5dd;
+    max-width: 700px;
+    margin-top: 0.5rem;
+    line-height: 1.5;
+}
+.slide-divider .divider-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: var(--small-size);
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--brand-amber);
+}
+.slide-divider .divider-label::before {
+    content: "";
+    width: 32px;
+    height: 2px;
+    background: var(--brand-amber);
+}
+
+/* Content slides */
+.slide-content-body {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(0.8rem, 1.5vw, 1.5rem);
+}
+.slide-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+.slide-header h2 {
+    font-size: var(--h2-size);
+    color: var(--brand-navy);
+    line-height: 1.1;
+}
+.slide-header .lead {
+    font-size: var(--body-size);
+    color: var(--text-secondary);
+    max-width: 900px;
+    line-height: 1.5;
+}
+
+.slide-footer {
+    position: absolute;
+    bottom: calc(var(--slide-padding) * 0.5);
+    left: var(--slide-padding);
+    right: var(--slide-padding);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: var(--small-size);
+    color: var(--text-muted);
+    pointer-events: none;
+    z-index: 2;
+}
+.slide-footer .section-tag { font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--brand-navy); }
+.slide-footer .trainer-tag { color: var(--brand-orange); font-weight: 600; }
+
+/* Closing slide */
+.slide-closing {
+    background:
+        radial-gradient(ellipse at 70% 80%, #fe762422 0%, transparent 55%),
+        radial-gradient(ellipse at 20% 20%, #fcd55433 0%, transparent 55%),
+        var(--surface-white);
+    justify-content: center;
+    text-align: left;
+}
+.slide-closing .closing-wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(0.8rem, 1.8vw, 1.8rem);
+    position: relative;
+    z-index: 1;
+}
+.slide-closing h1 {
+    font-size: clamp(2rem, 5.5vw, 4.5rem);
+    color: var(--brand-navy);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.02em;
+}
+.slide-closing h1 .gradient-text {
+    background: var(--gradient-warm);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* Checklist */
+.checklist {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(0.35rem, 0.8vw, 0.75rem);
+    list-style: none;
+}
+.checklist li {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    font-size: var(--body-size);
+    line-height: 1.5;
+    color: var(--text-primary);
+}
+.checklist li .check-icon {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    margin-top: 0.1em;
+    border-radius: 4px;
+    background: var(--brand-navy);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.checklist li .check-icon svg { width: 10px; height: 10px; }
+.checklist li strong { color: var(--brand-navy); font-weight: 700; }
+
+/* Numbered list */
+.num-list {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(0.45rem, 1vw, 0.9rem);
+    list-style: none;
+    counter-reset: num-counter;
+}
+.num-list li {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    font-size: var(--body-size);
+    line-height: 1.5;
+    color: var(--text-primary);
+    counter-increment: num-counter;
+}
+.num-list li::before {
+    content: counter(num-counter, decimal-leading-zero);
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: var(--small-size);
+    font-weight: 700;
+    color: var(--brand-orange);
+    min-width: 2.2em;
+    padding-top: 0.15em;
+}
+.num-list li strong { color: var(--brand-navy); font-weight: 700; }
+
+/* Animations */
+.reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition:
+        opacity var(--duration-normal) var(--ease-out-expo),
+        transform var(--duration-normal) var(--ease-out-expo);
+}
+.slide.visible .reveal { opacity: 1; transform: translateY(0); }
+.slide.visible .reveal:nth-child(1) { transition-delay: 0.08s; }
+.slide.visible .reveal:nth-child(2) { transition-delay: 0.16s; }
+.slide.visible .reveal:nth-child(3) { transition-delay: 0.24s; }
+.slide.visible .reveal:nth-child(4) { transition-delay: 0.32s; }
+.slide.visible .reveal:nth-child(5) { transition-delay: 0.40s; }
+.slide.visible .reveal:nth-child(6) { transition-delay: 0.48s; }
+
+.stagger > * {
+    opacity: 0;
+    transform: translateY(18px);
+    transition:
+        opacity 0.55s var(--ease-out-expo),
+        transform 0.55s var(--ease-out-expo);
+}
+.slide.visible .stagger > *:nth-child(1) { transition-delay: 0.15s; }
+.slide.visible .stagger > *:nth-child(2) { transition-delay: 0.22s; }
+.slide.visible .stagger > *:nth-child(3) { transition-delay: 0.29s; }
+.slide.visible .stagger > *:nth-child(4) { transition-delay: 0.36s; }
+.slide.visible .stagger > *:nth-child(5) { transition-delay: 0.43s; }
+.slide.visible .stagger > *:nth-child(6) { transition-delay: 0.50s; }
+.slide.visible .stagger > *:nth-child(7) { transition-delay: 0.57s; }
+.slide.visible .stagger > *:nth-child(8) { transition-delay: 0.64s; }
+.slide.visible .stagger > * { opacity: 1; transform: translateY(0); }
+
+/* Navigation */
+.progress-bar {
+    position: fixed;
+    top: 0; left: 0;
+    height: 3px;
+    background: var(--gradient-cta);
+    width: 0%;
+    z-index: 1000;
+    transition: width 0.3s ease;
+}
+.nav-dots {
+    position: fixed;
+    right: clamp(0.75rem, 1.5vw, 1.5rem);
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 999;
+}
+.nav-dots button {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+    transition: all 0.25s ease;
+}
+.nav-dots button.active {
+    background: var(--brand-orange);
+    border-color: var(--brand-orange);
+    transform: scale(1.35);
+}
+.nav-dots button:hover { border-color: var(--brand-orange); }
+
+.slide-counter {
+    position: fixed;
+    bottom: clamp(0.75rem, 1.5vw, 1.5rem);
+    right: clamp(0.75rem, 1.5vw, 1.5rem);
+    font-family: var(--font-mono);
+    font-size: var(--small-size);
+    color: var(--text-muted);
+    background: var(--surface-white);
+    padding: 6px 14px;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-card);
+    z-index: 999;
+}
+.slide-counter strong { color: var(--brand-orange); font-weight: 700; }
+
+/* Responsive */
+@media (max-height: 700px) {
+    :root {
+        --slide-padding: clamp(1rem, 3vw, 2.5rem);
+        --content-gap: clamp(0.5rem, 1.2vw, 1.2rem);
+    }
+}
+@media (max-height: 600px) {
+    :root {
+        --slide-padding: clamp(0.75rem, 2.5vw, 1.75rem);
+        --content-gap: clamp(0.4rem, 1vw, 0.9rem);
+        --body-size: clamp(0.7rem, 1.1vw, 0.95rem);
+    }
+    .nav-dots, .slide-counter { display: none; }
+}
+@media (max-width: 767px) {
+    .grid-2, .grid-3, .grid-4, .grid-5 { grid-template-columns: 1fr; }
+    .two-col { grid-template-columns: 1fr; }
+    .flow { flex-direction: column; }
+    .flow-arrow { transform: rotate(90deg); justify-content: center; }
+    .stat-grid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.2s !important;
+    }
+    html { scroll-behavior: auto; }
+}
+</style>
+</head>
+<body>
+
+<div class="progress-bar" id="progress"></div>
+<nav class="nav-dots" id="navDots" aria-label="Slide navigation"></nav>
+<div class="slide-counter" id="counter"><strong>01</strong> / 29</div>
+
+<!-- ===================== SLIDE 1 — TITLE ===================== -->
+<section class="slide slide-title">
+    <div class="title-wrap">
+        <span class="eyebrow reveal"><span class="dot"></span>Session 2 &middot; GenAI in Practice</span>
+        <h1 class="reveal">
+            GenAI in<br>
+            <span class="gradient-text">Practice</span>.
+        </h1>
+        <p class="lead reveal">
+            Patterns, tools, and limits &mdash; how real systems are built around LLM constraints, and what that means for what you're about to build.
+        </p>
+        <div class="meta-row reveal">
+            <span class="meta-chip primary"><span class="dot"></span>Session 2</span>
+            <span class="meta-chip"><span class="dot"></span>6 Blocks</span>
+        </div>
+    </div>
+</section>
+
+<!-- ===================== SLIDE 2 — AGENDA ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>Agenda</span>
+            <h2>What we'll cover.</h2>
+        </div>
+
+        <div class="grid grid-3 stagger">
+            <div class="card">
+                <span class="badge badge-amber">01</span>
+                <div class="card-title">The 4 Limitations of LLMs</div>
+                <div class="card-body">Why every GenAI pattern exists.</div>
+            </div>
+            <div class="card">
+                <span class="badge badge-amber">02</span>
+                <div class="card-title">Patterns That Solve Each Limitation</div>
+                <div class="card-body">RAG, Tool Use, Agents, Fine-tuning.</div>
+            </div>
+            <div class="card">
+                <span class="badge badge-amber">03</span>
+                <div class="card-title">From Theory to Your Project</div>
+                <div class="card-body">Connecting patterns to what you will build.</div>
+            </div>
+            <div class="card">
+                <span class="badge badge-amber">04</span>
+                <div class="card-title">Evaluation and Trust</div>
+                <div class="card-body">How to measure if AI output is good.</div>
+            </div>
+            <div class="card">
+                <span class="badge badge-amber">05</span>
+                <div class="card-title">AI Safety &amp; Responsible AI</div>
+                <div class="card-body">Bias, misuse, guardrails, ethical use.</div>
+            </div>
+            <div class="card card-accent">
+                <span class="badge badge-amber">06</span>
+                <div class="card-title">Your W4 Project</div>
+                <div class="card-body">Brief, expectations, and questions.</div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">Agenda</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 3 — SECTION 01 DIVIDER ===================== -->
+<section class="slide slide-divider">
+    <div class="divider-wrap">
+        <span class="divider-label reveal">Block 01</span>
+        <div class="section-num reveal">01</div>
+        <h2 class="reveal">The 4 Limitations of <span class="accent">LLMs</span>.</h2>
+        <p class="divider-sub reveal">Why every GenAI pattern exists — and what it's really trying to work around.</p>
+    </div>
+</section>
+
+<!-- ===================== SLIDE 4 — 4 PROBLEMS ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>01 &middot; Foundations</span>
+            <h2>Every LLM tends to have these 4 problems.</h2>
+        </div>
+
+        <div class="grid grid-4 stagger">
+            <div class="card" style="border-top: 4px solid #dc2626;">
+                <span class="badge badge-red">01</span>
+                <div class="card-title">Hallucination</div>
+                <div class="card-body">Confidently says wrong things. Predicts tokens that "sound right", not "are true". No source of truth built in.</div>
+            </div>
+            <div class="card" style="border-top: 4px solid var(--brand-amber);">
+                <span class="badge badge-amber">02</span>
+                <div class="card-title">Knowledge Cutoff</div>
+                <div class="card-body">Only knows training data. Doesn't know anything that happened after. Frozen in time by design.</div>
+            </div>
+            <div class="card" style="border-top: 4px solid var(--brand-blue);">
+                <span class="badge">03</span>
+                <div class="card-title">No Memory</div>
+                <div class="card-body">Each request is independent. Doesn't "remember" previous turns. Every conversation starts from zero.</div>
+            </div>
+            <div class="card" style="border-top: 4px solid #85439a;">
+                <span class="badge badge-purple">04</span>
+                <div class="card-title">Can't Execute</div>
+                <div class="card-body">Outputs text only. Can't run code, query databases, or call APIs. Can only suggest actions.</div>
+            </div>
+        </div>
+
+        <div class="card card-dark reveal">
+            <div class="card-body" style="color: var(--brand-amber); font-size: var(--body-size); font-weight: 600;">
+                Every pattern in GenAI exists to solve one of these 4 limitations.
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">01 &middot; LLM Limitations</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 5 — SECTION 02 DIVIDER ===================== -->
+<section class="slide slide-divider">
+    <div class="divider-wrap">
+        <span class="divider-label reveal">Block 02</span>
+        <div class="section-num reveal">02</div>
+        <h2 class="reveal">Patterns That Solve Each <span class="accent">Limitation</span>.</h2>
+        <p class="divider-sub reveal">RAG, Tool Use, Agents, Fine-tuning, Guardrails — each is an answer to a specific problem.</p>
+    </div>
+</section>
+
+<!-- ===================== SLIDE 6 — PATTERN MAP ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>02 &middot; Pattern Map</span>
+            <h2>The GenAI Pattern Map.</h2>
+        </div>
+
+        <table class="reveal">
+            <thead>
+                <tr>
+                    <th>Limitation</th>
+                    <th>Pattern</th>
+                    <th>What It Does</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Hallucination + Cutoff</strong></td>
+                    <td><span class="badge badge-amber">RAG</span></td>
+                    <td>Give model real documents before answering. Model weights unchanged.</td>
+                </tr>
+                <tr>
+                    <td><strong>Can't Execute</strong></td>
+                    <td><span class="badge badge-purple">Tool Use</span></td>
+                    <td>Model says "call function X" &mdash; your code executes it.</td>
+                </tr>
+                <tr>
+                    <td><strong>No Memory</strong></td>
+                    <td><span class="badge">Context Engineering</span></td>
+                    <td>You decide what goes in the context window. Memory is your responsibility.</td>
+                </tr>
+                <tr>
+                    <td><strong>Complex Reasoning</strong></td>
+                    <td><span class="badge badge-purple">Agents / ReAct</span></td>
+                    <td>Think &rarr; Act &rarr; Observe &rarr; Repeat until goal is reached.</td>
+                </tr>
+                <tr>
+                    <td><strong>Wrong Domain / Voice</strong></td>
+                    <td><span class="badge badge-green">Fine-tuning</span></td>
+                    <td>Train further on your own data. Actually changes model weights.</td>
+                </tr>
+                <tr>
+                    <td><strong>Unsafe Output</strong></td>
+                    <td><span class="badge badge-cyan">Guardrails</span></td>
+                    <td>Filter input and output. Block harmful or off-topic content.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="card card-dark reveal">
+            <div class="card-body" style="color: #c4d5dd; font-size: var(--body-size);">
+                No pattern "fixes" the LLM &mdash; they all work <em>around</em> limitations.
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">02 &middot; Patterns</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 7 — RAG ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>02 &middot; RAG</span>
+            <h2>RAG: Retrieval-Augmented Generation.</h2>
+        </div>
+
+        <svg viewBox="0 0 820 90" xmlns="http://www.w3.org/2000/svg" style="width:100%;" class="reveal" aria-hidden="true">
+          <defs>
+            <marker id="arr-rag" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L8,3 z" fill="#fe7624"/>
+            </marker>
+          </defs>
+          <!-- User Question -->
+          <rect x="2" y="20" width="110" height="50" rx="10" fill="#e3f0f7" stroke="#007bc1" stroke-width="1.5"/>
+          <text x="57" y="42" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#1e293b">User</text>
+          <text x="57" y="56" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#4d4e4e">Question</text>
+          <!-- Arrow -->
+          <line x1="112" y1="45" x2="148" y2="45" stroke="#fe7624" stroke-width="1.5" marker-end="url(#arr-rag)"/>
+          <!-- Retrieve -->
+          <rect x="150" y="20" width="130" height="50" rx="10" fill="#ffd6a233" stroke="#fe7624" stroke-width="1.5"/>
+          <text x="215" y="42" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#1e293b">Retrieve from</text>
+          <text x="215" y="56" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#4d4e4e">Document Store</text>
+          <!-- Arrow -->
+          <line x1="280" y1="45" x2="316" y2="45" stroke="#fe7624" stroke-width="1.5" marker-end="url(#arr-rag)"/>
+          <!-- Chunks -->
+          <rect x="318" y="20" width="130" height="50" rx="10" fill="#ffd6a255" stroke="#fe7624" stroke-width="1.5"/>
+          <text x="383" y="42" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#1e293b">Relevant</text>
+          <text x="383" y="56" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#4d4e4e">Chunks</text>
+          <!-- Arrow -->
+          <line x1="448" y1="45" x2="484" y2="45" stroke="#fe7624" stroke-width="1.5" marker-end="url(#arr-rag)"/>
+          <!-- LLM + Context -->
+          <rect x="486" y="10" width="160" height="70" rx="10" fill="#1e293b" stroke="#1e293b" stroke-width="1.5"/>
+          <text x="566" y="38" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#fbae42">LLM</text>
+          <text x="566" y="54" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#c4d5dd">+ Context Window</text>
+          <text x="566" y="67" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="8" fill="#698695">(question + chunks)</text>
+          <!-- Arrow -->
+          <line x1="646" y1="45" x2="682" y2="45" stroke="#fe7624" stroke-width="1.5" marker-end="url(#arr-rag)"/>
+          <!-- Answer + Source -->
+          <rect x="684" y="18" width="130" height="54" rx="10" fill="#92c83e22" stroke="#00ac4e" stroke-width="1.5"/>
+          <text x="749" y="40" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#1e293b">Answer</text>
+          <text x="749" y="55" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#00ac4e">+ Source</text>
+        </svg>
+
+        <div class="two-col stagger">
+            <div class="card" style="border-left: 4px solid #dc2626;">
+                <div class="card-title">Solves: Hallucination + Knowledge Cutoff</div>
+                <div class="card-body">Model answers questions grounded in documents you provide &mdash; not from (possibly stale or wrong) memorized weights.</div>
+            </div>
+            <div class="card card-accent">
+                <div class="card-title">How it works</div>
+                <div class="card-body">Give the model real documents in its context window before answering. <strong>Model weights unchanged.</strong> The knowledge lives in your data store, not the model.</div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">02 &middot; Patterns</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 8 — TOOL USE ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>02 &middot; Tool Use</span>
+            <h2>Tool Use: Let AI Take Actions.</h2>
+        </div>
+
+        <svg viewBox="0 0 820 90" xmlns="http://www.w3.org/2000/svg" style="width:100%;" class="reveal" aria-hidden="true">
+          <defs>
+            <marker id="arr-tool" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L8,3 z" fill="#85439a"/>
+            </marker>
+          </defs>
+          <!-- User -->
+          <rect x="2" y="20" width="100" height="50" rx="10" fill="#e3f0f7" stroke="#007bc1" stroke-width="1.5"/>
+          <text x="52" y="42" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#1e293b">User</text>
+          <text x="52" y="56" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#4d4e4e">question</text>
+          <!-- Arrow -->
+          <line x1="102" y1="45" x2="128" y2="45" stroke="#85439a" stroke-width="1.5" marker-end="url(#arr-tool)"/>
+          <!-- LLM decides -->
+          <rect x="130" y="12" width="170" height="66" rx="10" fill="#1e293b"/>
+          <text x="215" y="38" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#fbae42">LLM</text>
+          <text x="215" y="52" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#c4d5dd">decides: call</text>
+          <text x="215" y="64" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="8" fill="#85439a">database_query()</text>
+          <!-- Arrow -->
+          <line x1="300" y1="45" x2="330" y2="45" stroke="#85439a" stroke-width="1.5" marker-end="url(#arr-tool)"/>
+          <!-- Your Code -->
+          <rect x="332" y="18" width="150" height="54" rx="10" fill="#85439a22" stroke="#85439a" stroke-width="1.5"/>
+          <text x="407" y="40" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#85439a">Your Code</text>
+          <text x="407" y="55" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#4d4e4e">Executes</text>
+          <!-- Arrow -->
+          <line x1="482" y1="45" x2="512" y2="45" stroke="#85439a" stroke-width="1.5" marker-end="url(#arr-tool)"/>
+          <!-- Result -->
+          <rect x="514" y="20" width="100" height="50" rx="10" fill="#ffd6a233" stroke="#fe7624" stroke-width="1.5"/>
+          <text x="564" y="42" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#1e293b">Result</text>
+          <text x="564" y="56" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#4d4e4e">data</text>
+          <!-- Arrow -->
+          <line x1="614" y1="45" x2="644" y2="45" stroke="#85439a" stroke-width="1.5" marker-end="url(#arr-tool)"/>
+          <!-- LLM formats -->
+          <rect x="646" y="18" width="100" height="50" rx="10" fill="#1e293b"/>
+          <text x="696" y="38" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" font-weight="700" fill="#fbae42">LLM</text>
+          <text x="696" y="52" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="8" fill="#c4d5dd">formats answer</text>
+          <!-- Arrow -->
+          <line x1="746" y1="45" x2="776" y2="45" stroke="#85439a" stroke-width="1.5" marker-end="url(#arr-tool)"/>
+          <!-- User -->
+          <rect x="778" y="22" width="38" height="46" rx="10" fill="#92c83e22" stroke="#00ac4e" stroke-width="1.5"/>
+          <text x="797" y="40" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="8" font-weight="700" fill="#00ac4e">User</text>
+          <text x="797" y="54" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="7" fill="#4d4e4e">gets</text>
+          <text x="797" y="64" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="7" fill="#4d4e4e">answer</text>
+        </svg>
+
+        <div class="two-col stagger">
+            <div class="card" style="border-left: 4px solid #85439a;">
+                <div class="card-title">Solves: Can't Execute</div>
+                <div class="card-body">LLM outputs text saying what function to call. Your code runs it. The model never executes anything &mdash; it only describes what should happen.</div>
+            </div>
+            <div class="card card-accent">
+                <div class="card-title">The mental model</div>
+                <div class="card-body">AI is the <strong>brain</strong>. Your application is the <strong>hands</strong>. Tool use = connecting thinking to doing.</div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">02 &middot; Patterns</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 9 — AGENTS ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>02 &middot; Agents</span>
+            <h2>Agents: AI That Plans and Acts.</h2>
+        </div>
+
+        <div class="two-col stagger">
+            <div style="display: flex; align-items: center; justify-content: center;">
+                <svg viewBox="0 0 300 260" xmlns="http://www.w3.org/2000/svg" style="width:100%; max-width: 360px;" aria-hidden="true">
+                  <defs>
+                    <marker id="arr-agent" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+                      <path d="M0,0 L0,6 L8,3 z" fill="#fe7624"/>
+                    </marker>
+                  </defs>
+                  <!-- Center circle -->
+                  <circle cx="150" cy="130" r="36" fill="#1e293b" stroke="#fe7624" stroke-width="2"/>
+                  <text x="150" y="126" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" font-weight="700" fill="#fbae42">AGENT</text>
+                  <text x="150" y="140" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="8" fill="#c4d5dd">Loop</text>
+
+                  <!-- Think bubble top -->
+                  <rect x="94" y="14" width="112" height="44" rx="10" fill="#ffd6a233" stroke="#fe7624" stroke-width="1.5"/>
+                  <text x="150" y="32" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" fill="#1e293b">Think</text>
+                  <text x="150" y="48" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="8" fill="#698695">Plan next step</text>
+                  <!-- Arrow Think → Agent -->
+                  <line x1="150" y1="58" x2="150" y2="92" stroke="#fe7624" stroke-width="2" marker-end="url(#arr-agent)"/>
+
+                  <!-- Act bubble right -->
+                  <rect x="210" y="104" width="82" height="52" rx="10" fill="#85439a22" stroke="#85439a" stroke-width="1.5"/>
+                  <text x="251" y="125" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" fill="#85439a">Act</text>
+                  <text x="251" y="140" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="8" fill="#698695">Call tool</text>
+                  <!-- Arrow Agent → Act -->
+                  <line x1="186" y1="118" x2="208" y2="118" stroke="#fe7624" stroke-width="2" marker-end="url(#arr-agent)"/>
+
+                  <!-- Observe bubble bottom -->
+                  <rect x="84" y="196" width="132" height="52" rx="10" fill="#00b3d922" stroke="#00b3d9" stroke-width="1.5"/>
+                  <text x="150" y="218" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" fill="#007a99">Observe</text>
+                  <text x="150" y="234" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="8" fill="#698695">Read tool result</text>
+                  <!-- Arrow Observe → back (think) with curve -->
+                  <path d="M150,196 L150,168" stroke="#fe7624" stroke-width="2" marker-end="url(#arr-agent)" fill="none"/>
+                  <!-- Arrow Act → Observe -->
+                  <path d="M251,156 Q258,180 216,204" stroke="#fe7624" stroke-width="1.5" fill="none" marker-end="url(#arr-agent)"/>
+
+                  <!-- Repeat label -->
+                  <text x="26" y="134" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#698695" font-style="italic">Repeat</text>
+                  <path d="M46,118 Q20,118 18,130 Q16,144 46,148" stroke="#698695" stroke-width="1" fill="none" stroke-dasharray="4,2" marker-end="url(#arr-agent)"/>
+                </svg>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: var(--element-gap);">
+                <div class="card">
+                    <div class="card-title">Chatbot vs Agent</div>
+                    <div class="card-body">
+                        <strong>Chatbot:</strong> 1 question &rarr; 1 answer.<br><br>
+                        <strong>Agent:</strong> plan &rarr; act &rarr; observe &rarr; repeat until goal reached.
+                    </div>
+                </div>
+                <div class="card card-dark">
+                    <div class="card-title" style="color: var(--brand-amber);">Agent = chatbot + hands.</div>
+                    <div class="card-body">The loop runs until the agent decides it's done &mdash; or until it hits a limit you set.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">02 &middot; Patterns</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 10 — WHEN TO USE WHAT ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>02 &middot; Decision Guide</span>
+            <h2>When to use what?</h2>
+        </div>
+
+        <table class="reveal">
+            <thead>
+                <tr>
+                    <th>If you need&hellip;</th>
+                    <th>Consider</th>
+                    <th>Note</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Answers from internal documents</td>
+                    <td><span class="badge badge-amber">RAG</span></td>
+                    <td>First thing to try for knowledge-grounded Q&amp;A</td>
+                </tr>
+                <tr>
+                    <td>Call APIs or query databases</td>
+                    <td><span class="badge badge-purple">Tool Use / Agents</span></td>
+                    <td>Model describes what to call; your code runs it</td>
+                </tr>
+                <tr>
+                    <td>Model to speak in company voice</td>
+                    <td><span class="badge badge-green">Fine-tuning</span></td>
+                    <td>Try prompts and RAG first &mdash; fine-tuning is expensive</td>
+                </tr>
+                <tr>
+                    <td>Filter harmful or off-topic output</td>
+                    <td><span class="badge badge-cyan">Guardrails</span></td>
+                    <td>Input + output filtering layer</td>
+                </tr>
+                <tr>
+                    <td>Multi-step reasoning and planning</td>
+                    <td><span class="badge badge-purple">Agents (ReAct)</span></td>
+                    <td>More complex; harder to debug and control</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="card card-dark reveal">
+            <div class="card-body" style="color: #c4d5dd; font-size: var(--body-size);">
+                If if/else is enough, don't use AI.
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">02 &middot; Patterns</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 11 — SECTION 03 DIVIDER ===================== -->
+<section class="slide slide-divider">
+    <div class="divider-wrap">
+        <span class="divider-label reveal">Block 03</span>
+        <div class="section-num reveal">03</div>
+        <h2 class="reveal">From Theory to <span class="accent">Your Project</span>.</h2>
+        <p class="divider-sub reveal">Mapping patterns to AWS services &mdash; and to the W4 levels you're about to build.</p>
+    </div>
+</section>
+
+<!-- ===================== SLIDE 12 — CONCEPT → AWS → PROJECT ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>03 &middot; Mapping</span>
+            <h2>Concept &rarr; AWS Service &rarr; Your Project.</h2>
+        </div>
+
+        <table class="reveal">
+            <thead>
+                <tr>
+                    <th>Concept</th>
+                    <th>AWS Service</th>
+                    <th>Where in W4 Project</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>RAG</strong></td>
+                    <td>Bedrock Knowledge Base</td>
+                    <td><span class="badge badge-amber">W4 Level 1–2</span></td>
+                </tr>
+                <tr>
+                    <td><strong>Tool Use</strong></td>
+                    <td>Lambda + Action Groups</td>
+                    <td><span class="badge badge-amber">W4 Level 3</span></td>
+                </tr>
+                <tr>
+                    <td><strong>Agents</strong></td>
+                    <td>Bedrock Agents</td>
+                    <td><span class="badge badge-amber">W4 Level 5</span></td>
+                </tr>
+                <tr>
+                    <td><strong>Memory</strong></td>
+                    <td>DynamoDB</td>
+                    <td><span class="badge badge-amber">W4 Level 4</span></td>
+                </tr>
+                <tr>
+                    <td><strong>Cache</strong></td>
+                    <td>ElastiCache Redis</td>
+                    <td>Response caching</td>
+                </tr>
+                <tr>
+                    <td><strong>Guardrails</strong></td>
+                    <td>Bedrock Guardrails</td>
+                    <td>Graceful degradation</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="slide-footer"><span class="section-tag">03 &middot; Theory to Project</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 13 — QA SURVIVAL KIT 1–5 ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>03 &middot; QA Prep</span>
+            <h2>QA Survival Kit — Questions 1–5.</h2>
+        </div>
+
+        <div class="grid grid-5 stagger">
+            <div class="card">
+                <span class="badge badge-amber">Q1</span>
+                <div class="card-title">What is RAG?</div>
+                <div class="card-body">Retrieve relevant docs, put in context, let LLM answer grounded in real info.</div>
+            </div>
+            <div class="card">
+                <span class="badge badge-amber">Q2</span>
+                <div class="card-title">RAG vs fine-tuning?</div>
+                <div class="card-body">RAG: docs in context, weights unchanged. Fine-tune: actually change model weights.</div>
+            </div>
+            <div class="card">
+                <span class="badge badge-amber">Q3</span>
+                <div class="card-title">Why does AI hallucinate?</div>
+                <div class="card-body">No source of truth. Predicts probable tokens, not necessarily true ones.</div>
+            </div>
+            <div class="card">
+                <span class="badge badge-amber">Q4</span>
+                <div class="card-title">What is an embedding?</div>
+                <div class="card-body">Vector representation of meaning. Similar concepts tend to have similar vectors.</div>
+            </div>
+            <div class="card card-accent">
+                <span class="badge badge-amber">Q5</span>
+                <div class="card-title">What is a vector database?</div>
+                <div class="card-body">DB optimized for similarity search on embeddings &mdash; not SQL-style queries.</div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">03 &middot; Theory to Project</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 14 — QA SURVIVAL KIT 6–10 ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>03 &middot; QA Prep</span>
+            <h2>QA Survival Kit — Questions 6–10.</h2>
+        </div>
+
+        <div class="grid grid-5 stagger">
+            <div class="card">
+                <span class="badge badge-cyan">Q6</span>
+                <div class="card-title">Bedrock KB vs Bedrock Agents?</div>
+                <div class="card-body">KB = managed RAG pipeline. Agent = managed tool use + orchestration.</div>
+            </div>
+            <div class="card">
+                <span class="badge badge-cyan">Q7</span>
+                <div class="card-title">What is temperature?</div>
+                <div class="card-body">Controls sampling randomness. Low = deterministic, high = creative / less predictable.</div>
+            </div>
+            <div class="card">
+                <span class="badge badge-cyan">Q8</span>
+                <div class="card-title">What is context window?</div>
+                <div class="card-body">Max tokens the model can see at once. Everything competes for this space.</div>
+            </div>
+            <div class="card">
+                <span class="badge badge-cyan">Q9</span>
+                <div class="card-title">What is prompt engineering?</div>
+                <div class="card-body">Crafting inputs to get better outputs without changing the model itself.</div>
+            </div>
+            <div class="card card-accent">
+                <span class="badge badge-cyan">Q10</span>
+                <div class="card-title">Why not just fine-tune for everything?</div>
+                <div class="card-body">Expensive, needs labeled data, can degrade other capabilities. Try prompts and RAG first.</div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">03 &middot; Theory to Project</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 15 — SECTION 04 DIVIDER ===================== -->
+<section class="slide slide-divider">
+    <div class="divider-wrap">
+        <span class="divider-label reveal">Block 04</span>
+        <div class="section-num reveal">04</div>
+        <h2 class="reveal">Evaluation and <span class="accent">Trust</span>.</h2>
+        <p class="divider-sub reveal">How do you know if your AI system is working? The uncomfortable answer.</p>
+    </div>
+</section>
+
+<!-- ===================== SLIDE 16 — HOW DO YOU KNOW IT WORKS ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>04 &middot; Evaluation</span>
+            <h2>How do you know your AI works?</h2>
+        </div>
+
+        <div class="grid grid-3 stagger">
+            <div class="card" style="border-top: 4px solid var(--brand-orange);">
+                <span class="badge badge-amber">Manual Review</span>
+                <div class="card-title">Read the outputs.</div>
+                <div class="card-body">Check accuracy. Find failure modes. The most reliable signal &mdash; but doesn't scale beyond a few hundred samples.</div>
+            </div>
+            <div class="card" style="border-top: 4px solid var(--brand-blue);">
+                <span class="badge">Automated Eval</span>
+                <div class="card-title">LLM-as-judge, metrics.</div>
+                <div class="card-body">BLEU, ROUGE, similarity scores. LLM grades other LLM outputs. Scales, but introduces its own biases.</div>
+            </div>
+            <div class="card" style="border-top: 4px solid #00ac4e;">
+                <span class="badge badge-green">User Feedback</span>
+                <div class="card-title">Real signal from real use.</div>
+                <div class="card-body">Thumbs up/down, usage patterns, support tickets. Noisy but it reflects what actually matters.</div>
+            </div>
+        </div>
+
+        <div class="card card-dark reveal">
+            <div class="card-body" style="color: #c4d5dd; font-size: var(--body-size);">
+                Nothing replaces reading the output. But scale needs automation.
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">04 &middot; Evaluation</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 17 — PROMPT ITERATION CYCLE ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>04 &middot; Iteration</span>
+            <h2>Prompt Iteration Cycle.</h2>
+        </div>
+
+        <svg viewBox="0 0 720 130" xmlns="http://www.w3.org/2000/svg" style="width:100%;" class="reveal" aria-hidden="true">
+          <defs>
+            <marker id="arr-iter" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L8,3 z" fill="#fe7624"/>
+            </marker>
+          </defs>
+          <!-- Test -->
+          <rect x="30" y="30" width="110" height="60" rx="12" fill="#1e293b"/>
+          <text x="85" y="57" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="12" font-weight="700" fill="#fbae42">Test</text>
+          <text x="85" y="73" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#c4d5dd">run the prompt</text>
+          <!-- Arrow -->
+          <line x1="140" y1="60" x2="172" y2="60" stroke="#fe7624" stroke-width="2" marker-end="url(#arr-iter)"/>
+          <!-- Observe Failure -->
+          <rect x="174" y="28" width="130" height="64" rx="12" fill="#dc262622" stroke="#dc2626" stroke-width="1.5"/>
+          <text x="239" y="55" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" fill="#dc2626">Observe</text>
+          <text x="239" y="70" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#4d4e4e">Failure Mode</text>
+          <!-- Arrow -->
+          <line x1="304" y1="60" x2="336" y2="60" stroke="#fe7624" stroke-width="2" marker-end="url(#arr-iter)"/>
+          <!-- Improve Prompt -->
+          <rect x="338" y="28" width="130" height="64" rx="12" fill="#ffd6a233" stroke="#fe7624" stroke-width="1.5"/>
+          <text x="403" y="55" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" fill="#1e293b">Improve</text>
+          <text x="403" y="70" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#4d4e4e">Prompt</text>
+          <!-- Arrow -->
+          <line x1="468" y1="60" x2="500" y2="60" stroke="#fe7624" stroke-width="2" marker-end="url(#arr-iter)"/>
+          <!-- Test Again -->
+          <rect x="502" y="28" width="120" height="64" rx="12" fill="#92c83e22" stroke="#00ac4e" stroke-width="1.5"/>
+          <text x="562" y="55" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" fill="#00ac4e">Test Again</text>
+          <text x="562" y="70" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#4d4e4e">measure</text>
+          <!-- Arrow back (curved) -->
+          <path d="M622,60 Q680,60 680,100 Q680,120 640,120 Q400,120 120,120 Q80,120 80,90" stroke="#fe7624" stroke-width="1.5" fill="none" stroke-dasharray="6,3" marker-end="url(#arr-iter)"/>
+          <text x="400" y="116" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#698695">Repeat</text>
+        </svg>
+
+        <div class="two-col stagger">
+            <div class="card">
+                <div class="card-title">Like debugging code.</div>
+                <div class="card-body">Your first prompt is almost always suboptimal. Iteration is the work, not the exception. Each cycle teaches you something about where the model breaks.</div>
+            </div>
+            <div class="card card-dark">
+                <div class="card-title" style="color: var(--brand-amber);">No feedback loop = guessing blind.</div>
+                <div class="card-body">Define what "good" looks like <em>before</em> running the model, not after. Otherwise you're just changing prompts randomly.</div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">04 &middot; Evaluation</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 18 — SECTION 05 DIVIDER ===================== -->
+<section class="slide slide-divider">
+    <div class="divider-wrap">
+        <span class="divider-label reveal">Block 05</span>
+        <div class="section-num reveal">05</div>
+        <h2 class="reveal">AI Safety &amp; <span class="accent">Responsible AI</span>.</h2>
+        <p class="divider-sub reveal">Bias, misuse, guardrails, and the questions that don't have clean answers yet.</p>
+    </div>
+</section>
+
+<!-- ===================== SLIDE 19 — BIAS IN = BIAS OUT ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>05 &middot; Bias</span>
+            <h2>Bias In = Bias Out.</h2>
+        </div>
+
+        <div class="stagger" style="display: flex; flex-direction: column; gap: var(--element-gap);">
+            <div class="card">
+                <span class="badge badge-amber">Selection Bias</span>
+                <div class="card-body">Training data doesn't represent the full population you're trying to serve.</div>
+            </div>
+            <div class="card">
+                <span class="badge badge-amber">Label Bias</span>
+                <div class="card-body">Human annotators bring their own biases into the labels used to train the model.</div>
+            </div>
+            <div class="card">
+                <span class="badge badge-amber">Representation Bias</span>
+                <div class="card-body">Some groups are underrepresented in training data &mdash; model performs worse on them.</div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">05 &middot; Responsible AI</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 20 — SAFETY & ALIGNMENT ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>05 &middot; Safety</span>
+            <h2>Safety &amp; Alignment.</h2>
+        </div>
+
+        <div class="grid grid-3 stagger">
+            <div class="card" style="border-top: 4px solid #dc2626;">
+                <span class="badge badge-red">Jailbreaking</span>
+                <div class="card-title">Tricking the model to bypass safety.</div>
+                <div class="card-body">Prompt injection, social engineering, role-play attacks. "Pretend you have no restrictions&hellip;" Models are not perfectly robust against this.</div>
+            </div>
+            <div class="card" style="border-top: 4px solid var(--brand-blue);">
+                <span class="badge">RLHF</span>
+                <div class="card-title">Reinforcement Learning from Human Feedback.</div>
+                <div class="card-body">Human raters score model outputs. Model fine-tuned to produce outputs humans rate highly. Makes models more helpful and less harmful &mdash; imperfect, but significant.</div>
+            </div>
+            <div class="card" style="border-top: 4px solid #85439a;">
+                <span class="badge badge-purple">Red Teaming</span>
+                <div class="card-title">Intentionally attacking your own system.</div>
+                <div class="card-body">Before deployment, hire or task people to break the model. Find failure modes before users do. Standard practice at major AI labs.</div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">05 &middot; Responsible AI</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 21 — RESPONSIBLE AI IN PRACTICE ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>05 &middot; Practice</span>
+            <h2>Responsible AI in Practice.</h2>
+        </div>
+
+        <table class="reveal">
+            <thead>
+                <tr>
+                    <th>Principle</th>
+                    <th>What it means in practice</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Transparency</strong></td>
+                    <td>Tell users when they're talking to AI. Don't pretend it's a human.</td>
+                </tr>
+                <tr>
+                    <td><strong>Human-in-the-loop</strong></td>
+                    <td>Critical decisions (medical, legal, financial) need human review before action.</td>
+                </tr>
+                <tr>
+                    <td><strong>Data Privacy</strong></td>
+                    <td>Don't send PII to external models without user consent. Know your data residency requirements.</td>
+                </tr>
+                <tr>
+                    <td><strong>Monitoring</strong></td>
+                    <td>Watch for drift, bias, and failures post-deployment. Models don't stay accurate forever.</td>
+                </tr>
+                <tr>
+                    <td><strong>Accountability</strong></td>
+                    <td>When AI is wrong, who is responsible? Answer this before deployment, not after an incident.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="slide-footer"><span class="section-tag">05 &middot; Responsible AI</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 22 — 5 QUESTIONS BEFORE BUILDING ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>05 &middot; Before You Build</span>
+            <h2>5 questions before building AI into anything.</h2>
+        </div>
+
+        <div class="grid grid-5 stagger">
+            <div class="card" style="border-top: 4px solid var(--brand-orange);">
+                <span class="badge badge-amber">01</span>
+                <div class="card-title">Does this problem actually need AI?</div>
+                <div class="card-body">Would if/else or a database query solve it? Start simple.</div>
+            </div>
+            <div class="card" style="border-top: 4px solid #dc2626;">
+                <span class="badge badge-red">02</span>
+                <div class="card-title">What happens when it's wrong?</div>
+                <div class="card-body">Wrong in a recommendation vs wrong in a medical diagnosis are very different.</div>
+            </div>
+            <div class="card" style="border-top: 4px solid var(--brand-blue);">
+                <span class="badge">03</span>
+                <div class="card-title">Do we have the data?</div>
+                <div class="card-body">Enough, clean, representative. No data plan = no AI plan.</div>
+            </div>
+            <div class="card" style="border-top: 4px solid var(--brand-amber);">
+                <span class="badge badge-amber">04</span>
+                <div class="card-title">Can we evaluate the output?</div>
+                <div class="card-body">If you can't measure quality, you can't improve it. Define success criteria first.</div>
+            </div>
+            <div class="card" style="border-top: 4px solid #85439a;">
+                <span class="badge badge-purple">05</span>
+                <div class="card-title">Who is responsible?</div>
+                <div class="card-body">When it makes a mistake, who owns it? Don't ship AI without an accountability plan.</div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">05 &middot; Responsible AI</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 23 — SECTION 06 DIVIDER ===================== -->
+<section class="slide slide-divider">
+    <div class="divider-wrap">
+        <span class="divider-label reveal">Block 06</span>
+        <div class="section-num reveal">06</div>
+        <h2 class="reveal">Your <span class="accent">W4 Project</span>.</h2>
+        <p class="divider-sub reveal">What you're building, how it connects to everything we've covered, and what's expected.</p>
+    </div>
+</section>
+
+<!-- ===================== SLIDE 24 — W4 PROJECT OVERVIEW ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>06 &middot; Project</span>
+            <h2>W4 Project: Build an AI Q&amp;A System.</h2>
+            <p class="lead">5 progressive levels — each adds a new capability.</p>
+        </div>
+
+        <div class="flow stagger">
+            <div class="flow-step">
+                <span class="flow-num">Level 1</span>
+                <div class="flow-title">Single-fact Retrieval</div>
+                <div class="flow-body">RAG basic. One document, one question, one grounded answer.</div>
+            </div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-step">
+                <span class="flow-num">Level 2</span>
+                <div class="flow-title">Multi-doc Synthesis</div>
+                <div class="flow-body">Retrieve from multiple sources, synthesize a coherent answer.</div>
+            </div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-step">
+                <span class="flow-num">Level 3</span>
+                <div class="flow-title">Computed Answers</div>
+                <div class="flow-body">Tool use: model calls a function that queries real data, returns live results.</div>
+            </div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-step">
+                <span class="flow-num">Level 4</span>
+                <div class="flow-title">Multi-turn Conversation</div>
+                <div class="flow-body">Memory via DynamoDB. Conversation context persists across turns.</div>
+            </div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-step" style="background: var(--brand-navy); border-color: var(--brand-navy);">
+                <span class="flow-num" style="color: var(--brand-amber);">Level 5</span>
+                <div class="flow-title" style="color: #fff;">Goal-directed Investigation</div>
+                <div class="flow-body" style="color: #c4d5dd;">Agent loop: plan, act, observe, repeat. Bedrock Agents.</div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">06 &middot; W4 Project</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+
+<!-- ===================== SLIDE 26 — PROJECT Q&A ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body" style="align-items: center; text-align: center;">
+        <span class="eyebrow reveal" style="align-self: center;"><span class="dot"></span>06 &middot; Questions</span>
+        <h2 class="reveal" style="font-size: clamp(1.8rem, 4vw, 3.5rem); max-width: 800px;">Questions about the project?</h2>
+        <p class="reveal" style="max-width: 600px; font-size: var(--body-size); color: var(--text-secondary);">
+            Architecture? Level requirements? Evaluation criteria? What counts as L3 vs L5?
+        </p>
+
+        <div class="grid grid-3 stagger" style="max-width: 900px; margin-top: 1rem;">
+            <div class="card">
+                <div class="card-title">Architecture questions</div>
+                <div class="card-body">Which services? How do they connect? What does the data flow look like?</div>
+            </div>
+            <div class="card card-accent">
+                <div class="card-title">Level questions</div>
+                <div class="card-body">What exactly is required for each level? How will it be evaluated?</div>
+            </div>
+            <div class="card">
+                <div class="card-title">Team questions</div>
+                <div class="card-body">How to split work? What does each person own?</div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">06 &middot; W4 Project</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 27 — FULL KEYWORD MAP ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>Recap</span>
+            <h2>Full Keyword Map.</h2>
+        </div>
+
+        <svg viewBox="0 0 860 180" xmlns="http://www.w3.org/2000/svg" style="width:100%;" class="reveal" aria-hidden="true">
+          <defs>
+            <marker id="arr-map" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+              <path d="M0,0 L0,8 L10,4 z" fill="#fe7624"/>
+            </marker>
+          </defs>
+
+          <!-- Group 1: Limitations -->
+          <rect x="2" y="2" width="228" height="176" rx="14" fill="#f9fafb" stroke="#c4d5dd" stroke-width="1.5"/>
+          <text x="116" y="22" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#dc2626" letter-spacing="0.1em">LIMITATIONS</text>
+          <rect x="16" y="32" width="200" height="28" rx="6" fill="#dc262622" stroke="#dc2626" stroke-width="1"/>
+          <text x="116" y="50" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#dc2626">Hallucination</text>
+          <rect x="16" y="68" width="200" height="28" rx="6" fill="#ffd6a233" stroke="#fe7624" stroke-width="1"/>
+          <text x="116" y="86" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#fe7624">Knowledge Cutoff</text>
+          <rect x="16" y="104" width="200" height="28" rx="6" fill="#e3f0f7" stroke="#007bc1" stroke-width="1"/>
+          <text x="116" y="122" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#007bc1">No Memory</text>
+          <rect x="16" y="140" width="200" height="28" rx="6" fill="#85439a22" stroke="#85439a" stroke-width="1"/>
+          <text x="116" y="158" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#85439a">Can't Execute</text>
+
+          <!-- Arrow 1 -->
+          <line x1="230" y1="90" x2="280" y2="90" stroke="#fe7624" stroke-width="2.5" marker-end="url(#arr-map)"/>
+
+          <!-- Group 2: Patterns -->
+          <rect x="282" y="2" width="228" height="176" rx="14" fill="#1e293b" stroke="#1e293b" stroke-width="1.5"/>
+          <text x="396" y="22" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#fbae42" letter-spacing="0.1em">PATTERNS</text>
+          <rect x="296" y="32" width="200" height="24" rx="6" fill="#ffd6a233" stroke="#fbae42" stroke-width="1"/>
+          <text x="396" y="48" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" fill="#fbae42">RAG</text>
+          <rect x="296" y="62" width="200" height="24" rx="6" fill="#85439a33" stroke="#85439a" stroke-width="1"/>
+          <text x="396" y="78" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" fill="#c4d5dd">Tool Use</text>
+          <rect x="296" y="92" width="200" height="24" rx="6" fill="#00b3d922" stroke="#00b3d9" stroke-width="1"/>
+          <text x="396" y="108" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" fill="#c4d5dd">Context Engineering</text>
+          <rect x="296" y="122" width="200" height="24" rx="6" fill="#fe762422" stroke="#fe7624" stroke-width="1"/>
+          <text x="396" y="138" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" fill="#c4d5dd">Agents</text>
+          <rect x="296" y="152" width="200" height="20" rx="6" fill="#92c83e22" stroke="#00ac4e" stroke-width="1"/>
+          <text x="396" y="166" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#c4d5dd">Fine-tuning / Guardrails</text>
+
+          <!-- Arrow 2 -->
+          <line x1="510" y1="90" x2="560" y2="90" stroke="#fe7624" stroke-width="2.5" marker-end="url(#arr-map)"/>
+
+          <!-- Group 3: AWS -->
+          <rect x="562" y="2" width="296" height="176" rx="14" fill="#e3f0f7" stroke="#007bc1" stroke-width="1.5"/>
+          <text x="710" y="22" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#007bc1" letter-spacing="0.1em">AWS SERVICES</text>
+          <rect x="576" y="32" width="268" height="24" rx="6" fill="#007bc122" stroke="#007bc1" stroke-width="1"/>
+          <text x="710" y="48" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" fill="#1e293b">Bedrock Knowledge Base</text>
+          <rect x="576" y="62" width="268" height="24" rx="6" fill="#007bc122" stroke="#007bc1" stroke-width="1"/>
+          <text x="710" y="78" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" fill="#1e293b">Lambda + Action Groups</text>
+          <rect x="576" y="92" width="268" height="24" rx="6" fill="#007bc122" stroke="#007bc1" stroke-width="1"/>
+          <text x="710" y="108" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" fill="#1e293b">DynamoDB (memory store)</text>
+          <rect x="576" y="122" width="268" height="24" rx="6" fill="#1e293b22" stroke="#1e293b" stroke-width="1"/>
+          <text x="710" y="138" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" fill="#1e293b">Bedrock Agents</text>
+          <rect x="576" y="152" width="268" height="20" rx="6" fill="#007bc122" stroke="#007bc1" stroke-width="1"/>
+          <text x="710" y="166" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#1e293b">ElastiCache / Bedrock Guardrails</text>
+        </svg>
+
+        <div class="card card-dark reveal">
+            <div class="card-body" style="color: #c4d5dd; font-size: var(--body-size);">
+                For any system: ask which limitation? which pattern? which service?
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">Recap</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 28 — CORE MESSAGE ===================== -->
+<section class="slide">
+    <div class="slide-content slide-content-body">
+        <div class="slide-header reveal">
+            <span class="eyebrow"><span class="dot"></span>Core Message</span>
+            <h2>What to take away.</h2>
+        </div>
+
+        <div class="grid grid-2 stagger">
+            <div class="card card-dark">
+                <div class="card-title" style="color: var(--brand-amber);">LLMs have 4 fundamental limitations.</div>
+                <div class="card-body">Hallucination, knowledge cutoff, no memory, can't execute. Understanding these is the prerequisite for everything.</div>
+            </div>
+            <div class="card card-dark">
+                <div class="card-title" style="color: var(--brand-amber);">Every pattern in GenAI is a workaround.</div>
+                <div class="card-body">RAG, Tool Use, Agents, Context Engineering &mdash; each exists because the model itself can't solve the problem alone.</div>
+            </div>
+            <div class="card card-dark">
+                <div class="card-title" style="color: var(--brand-amber);">Pick the right pattern for the problem.</div>
+                <div class="card-body">RAG for knowledge, Tool Use to act, Agents to plan, Fine-tuning for voice, Guardrails to protect. Don't use all of them just because you can.</div>
+            </div>
+            <div class="card card-dark">
+                <div class="card-title" style="color: var(--brand-amber);">Building AI comes with real responsibility.</div>
+                <div class="card-body">Bias, fairness, accountability, transparency. These aren't optional extras &mdash; they're part of the job.</div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-footer"><span class="section-tag">Core Message</span><span class="trainer-tag">Session 2</span></div>
+</section>
+
+<!-- ===================== SLIDE 29 — CLOSING ===================== -->
+<section class="slide slide-closing">
+    <div class="closing-wrap">
+        <span class="eyebrow reveal"><span class="dot"></span>Q&amp;A</span>
+        <h1 class="reveal">
+            Questions?<br>
+            <span class="gradient-text">Let's discuss.</span>
+        </h1>
+        <div class="meta-row reveal">
+            <span class="meta-chip primary"><span class="dot"></span>Session 2 &middot; GenAI in Practice</span>
+        </div>
+    </div>
+</section>
+
+<script>
+class SlidePresentation {
+    constructor() {
+        this.slides = [...document.querySelectorAll('.slide')];
+        this.currentSlide = 0;
+        this.progressBar = document.getElementById('progress');
+        this.navDotsContainer = document.getElementById('navDots');
+        this.counter = document.getElementById('counter');
+
+        this.setupNavDots();
+        this.setupIntersectionObserver();
+        this.setupKeyboardNav();
+        this.setupTouchNav();
+        this.setupWheelNav();
+
+        this.slides[0].classList.add('visible');
+        this.updateCounter(0);
+        this.updateProgress();
+    }
+
+    setupNavDots() {
+        this.navDotsContainer.innerHTML = '';
+        this.slides.forEach((_, i) => {
+            const btn = document.createElement('button');
+            btn.setAttribute('aria-label', `Go to slide ${i + 1}`);
+            btn.addEventListener('click', () => this.goTo(i));
+            this.navDotsContainer.appendChild(btn);
+        });
+        this.updateActiveDot(0);
+    }
+
+    setupIntersectionObserver() {
+        const obs = new IntersectionObserver((entries) => {
+            entries.forEach((e) => {
+                if (e.isIntersecting) {
+                    e.target.classList.add('visible');
+                    const idx = this.slides.indexOf(e.target);
+                    if (idx >= 0) {
+                        this.currentSlide = idx;
+                        this.updateCounter(idx);
+                        this.updateProgress();
+                        this.updateActiveDot(idx);
+                    }
+                }
+            });
+        }, { threshold: 0.5 });
+        this.slides.forEach((s) => obs.observe(s));
+    }
+
+    setupKeyboardNav() {
+        document.addEventListener('keydown', (e) => {
+            switch (e.key) {
+                case 'ArrowDown': case 'ArrowRight': case 'PageDown': case ' ':
+                    e.preventDefault(); this.next(); break;
+                case 'ArrowUp': case 'ArrowLeft': case 'PageUp':
+                    e.preventDefault(); this.prev(); break;
+                case 'Home': e.preventDefault(); this.goTo(0); break;
+                case 'End': e.preventDefault(); this.goTo(this.slides.length - 1); break;
+            }
+        });
+    }
+
+    setupTouchNav() {
+        let startY = 0;
+        document.addEventListener('touchstart', (e) => { startY = e.touches[0].clientY; }, { passive: true });
+        document.addEventListener('touchend', (e) => {
+            const delta = startY - e.changedTouches[0].clientY;
+            if (Math.abs(delta) > 60) { if (delta > 0) this.next(); else this.prev(); }
+        }, { passive: true });
+    }
+
+    setupWheelNav() {
+        let busy = false;
+        document.addEventListener('wheel', (e) => {
+            if (busy) return;
+            if (Math.abs(e.deltaY) < 30) return;
+            busy = true;
+            setTimeout(() => { busy = false; }, 600);
+            if (e.deltaY > 0) this.next(); else this.prev();
+        }, { passive: true });
+    }
+
+    next() { this.goTo(Math.min(this.currentSlide + 1, this.slides.length - 1)); }
+    prev() { this.goTo(Math.max(this.currentSlide - 1, 0)); }
+    goTo(idx) { this.slides[idx].scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+
+    updateActiveDot(idx) {
+        const dots = this.navDotsContainer.querySelectorAll('button');
+        dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+    }
+
+    updateCounter(idx) {
+        const total = String(this.slides.length).padStart(2, '0');
+        const current = String(idx + 1).padStart(2, '0');
+        this.counter.innerHTML = `<strong>${current}</strong> / ${total}`;
+    }
+
+    updateProgress() {
+        const pct = ((this.currentSlide + 1) / this.slides.length) * 100;
+        this.progressBar.style.width = pct + '%';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => { new SlidePresentation(); });
+</script>
+</body>
+</html>
