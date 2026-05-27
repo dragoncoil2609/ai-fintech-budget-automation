@@ -90,19 +90,42 @@ class BedrockAI:
         self.model_id = model_id
 
     def categorize(self, description: str, amount: float, date: str) -> dict:
+        # --- BƯỚC 1: HYBRID RULE-BASED (So khớp từ khóa nhanh offline) ---
+        desc_lower = description.lower()
+        for category, keywords in LocalAI.KEYWORDS.items():
+            for kw in keywords:
+                if kw in desc_lower:
+                    # Khớp từ khóa chuẩn -> Gán ngay lập tức, độ tin cậy HIGH
+                    return {"category": category, "confidence": "high"}
+
+        # --- BƯỚC 2: GỌI BEDROCK AI NẾU GIAO DỊCH PHỨC TẠP / MƠ HỒ ---
         prompt = CATEGORIZE_PROMPT.format(
             categories=", ".join(CATEGORIES),
             description=description,
             amount=amount,
             date=date,
         )
-        resp = self.runtime.converse(
-            modelId=self.model_id,
-            messages=[{"role": "user", "content": [{"text": prompt}]}],
-            inferenceConfig={"maxTokens": 100, "temperature": 0.0},
-        )
-        text = resp["output"]["message"]["content"][0]["text"]
-        return _parse_json_response(text)
+        try:
+            # Chờ phản hồi tối đa từ Bedrock, nếu quá tải hoặc lỗi sẽ kích hoạt fallback
+            resp = self.runtime.converse(
+                modelId=self.model_id,
+                messages=[{"role": "user", "content": [{"text": prompt}]}],
+                inferenceConfig={"maxTokens": 100, "temperature": 0.0},
+            )
+            text = resp["output"]["message"]["content"][0]["text"]
+            return _parse_json_response(text)
+        except Exception as e:
+            # --- BƯỚC 3: GRACEFUL FALLBACK NẾU BEDROCK BỊ TIMEOUT / LỖI ---
+            import sys
+            print(f"WARNING: Bedrock error triggered fallback to LocalAI: {e}", file=sys.stderr)
+            
+            # Dự phòng xuống LocalAI (Rule-based)
+            local_ai = LocalAI()
+            fallback_res = local_ai.categorize(description, amount, date)
+            return {
+                "category": fallback_res["category"],
+                "confidence": "low-fallback"
+            }
 
 
 class LocalAI:

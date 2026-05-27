@@ -725,14 +725,14 @@
       <thead><tr><th>Date</th><th>Description</th><th>Category</th><th style="text-align:right;">Amount</th></tr></thead>
       <tbody>
         ${t.slice(0, 50).map(r => `
-          <tr ${r.confidence === 'low' ? 'style="background: #fffbeb;"' : ''}>
+          <tr ${(r.confidence === 'low' || r.confidence === 'low-fallback') ? 'style="background: #fffbeb;"' : ''}>
             <td>${r.date}</td>
             <td>
               ${(r.description || '').slice(0, 50)}
-              ${r.confidence === 'low' ? '<span title="Low confidence. Please review." style="cursor:help; margin-left:5px;">⚠️</span>' : ''}
+              ${r.confidence === 'low-fallback' ? '<span title="AI đang bận, đã tự động dùng bộ lọc dự phòng. Vui lòng kiểm tra lại." style="cursor:help; margin-left:5px;">⚠️</span>' : (r.confidence === 'low' ? '<span title="Low confidence. Please review." style="cursor:help; margin-left:5px;">⚠️</span>' : '')}
             </td>
             <td>
-              <select onchange="updateCategory('${r.id}', this.value)" class="cat-select" ${r.confidence === 'low' ? 'style="border: 1px solid var(--warn);"' : ''}>
+              <select onchange="updateCategory('${r.id}', this.value)" class="cat-select" ${(r.confidence === 'low' || r.confidence === 'low-fallback') ? 'style="border: 1px solid var(--warn);"' : ''}>
                 <option value="${r.category}" selected hidden>${r.category}</option>
                 <option value="Food">Food</option>
                 <option value="Transport">Transport</option>
