@@ -43,3 +43,12 @@ jobs:
             --function-name budgetbot-main-image-lambda \
             --image-uri 640056739375.dkr.ecr.us-west-2.amazonaws.com/budgetbot-backend:latest \
             --region us-west-2
+
+      - name: Deploy Frontend to S3
+        run: |
+          aws s3 cp starter_apps/budgetbot/frontend/index.html s3://w7-frontend-hackathon/index.html --region us-west-2
+
+      - name: Invalidate CloudFront Cache
+        run: |
+          aws cloudfront create-invalidation --distribution-id E537PWDECR5IZ --paths "/*"
+
