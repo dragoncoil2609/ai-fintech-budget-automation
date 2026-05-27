@@ -34,6 +34,58 @@ def _parse_csv(data: bytes) -> list:
     return parsed
 
 
+def _parse_pdf(data: bytes) -> list:
+    """Extract tables from PDF using pdfplumber."""
+    try:
+        import pdfplumber
+    except ImportError:
+        raise ImportError("pdfplumber not installed. Add it to requirements.txt")
+    import io
+    
+    parsed = []
+    with pdfplumber.open(io.BytesIO(data)) as pdf:
+        for page in pdf.pages:
+            tables = page.extract_tables()
+            for table in tables:
+                if not table:
+                    continue
+                header = None
+                idx = {}
+                for row in table:
+                    if not row or not any(row): continue
+                    row = [str(c).replace('\n', ' ').strip() if c else "" for c in row]
+                    
+                    if header is None:
+                        header = [c.lower() for c in row]
+                        if "date" in header and "amount" in header:
+                            idx = {col: i for i, col in enumerate(header)}
+                        else:
+                            idx = {"date": 0, "description": 1, "amount": 2}
+                            # process as data row if it doesn't look like a header
+                            try:
+                                amount_str = row[idx.get("amount", 2)].strip().replace(",", "")
+                                parsed.append({
+                                    "date": row[idx.get("date", 0)].strip(),
+                                    "description": row[idx.get("description", 1)].strip(),
+                                    "amount": float(amount_str),
+                                })
+                            except (ValueError, IndexError):
+                                pass
+                    else:
+                        if len(row) < 3 or not row[idx.get("date", 0)].strip():
+                            continue
+                        try:
+                            amount_str = row[idx.get("amount", 2)].strip().replace(",", "")
+                            parsed.append({
+                                "date": row[idx.get("date", 0)].strip(),
+                                "description": row[idx.get("description", 1)].strip(),
+                                "amount": float(amount_str),
+                            })
+                        except (ValueError, IndexError):
+                            continue
+    return parsed
+
+
 def handle_upload(
     user_id: str,
     filename: str,
@@ -42,10 +94,14 @@ def handle_upload(
     storage,
     userstore,
 ) -> dict:
-    """Parse CSV → categorize each row via AI → persist to userstore."""
+    """Parse CSV/PDF → categorize each row via AI → persist to userstore."""
     key = f"{user_id}/{filename}"
     location = storage.put(key, data)
-    rows = _parse_csv(data)
+    
+    if filename.lower().endswith('.pdf'):
+        rows = _parse_pdf(data)
+    else:
+        rows = _parse_csv(data)
     import concurrent.futures
 
     def process_row(row):
