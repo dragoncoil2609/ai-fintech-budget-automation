@@ -216,24 +216,4 @@ Nhóm đã ghi lại toàn bộ hệ thống cảnh báo và biểu đồ giám 
 2. **Lỗ hổng Connection Pool:** Scale Lambda làm bùng nổ RDS Connection. Giải quyết triệt để bằng SQS Buffer làm hàng đợi tĩnh.
 3. **Tư duy Event-Driven:** Chuyển từ API đồng bộ sang luồng Bất đồng bộ (Upload S3 -> Gọi API /enqueue -> SQS -> Lambda Worker) là bước ngoặt mở ra khả năng chịu tải vô cực.
 
----
 
-## 10. Danh sách kiểm tra Evidence
-
-### Deployment Evidence
-- [ ] Public URL qua HTTPS (CloudFront + Domain riêng).
-- [ ] Upload sao kê -> /enqueue -> SQS -> Lambda -> Bedrock không timeout.
-- [ ] Bypass xử lý AI với file >1000 dòng.
-
-### Architecture Evidence
-- [ ] 7 khả năng ánh xạ đúng dịch vụ.
-- [ ] SQS và DLQ cấu hình xong.
-
-### Cost & Security Evidence
-- [ ] Cost Explorer dưới $100.
-- [ ] Lambda IAM Role scope chặt.
-- [ ] AWS WAF, Cognito và VPC cấu hình an toàn.
-
-### Observability Evidence
-- [ ] CloudWatch Dashboard hiển thị 5+ metrics.
-- [ ] Metric `UploadJobFailed` bắn thành công.
