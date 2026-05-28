@@ -451,9 +451,8 @@ export default function App() {
           return
         }
 
-        const previewRows = allRows.slice(0, 5).map(r => r.split(','))
-        setCsvPreviewData(previewRows)
-        setPendingFile(file)
+        // Theo yêu cầu mới: Dưới 1000 dòng up thẳng lên luôn không cần chờ Preview
+        handleUpload(file, null)
       }
       reader.readAsText(file)
     } else {
