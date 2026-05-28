@@ -272,7 +272,7 @@ export default function App() {
     }
   }, [authFetch])
 
-  useEffect(() => { fetchData(month) }, [month, fetchData])
+  useEffect(() => { if (token) fetchData(month) }, [month, fetchData, token])
 
   /* --- Poll job status --- */
   const pollJobStatus = useCallback(async (job_id) => {
