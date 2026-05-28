@@ -32,7 +32,7 @@ export default function Chatbot({ authFetch, CATEGORY_VI }) {
     // Grab the last 5 messages for context (stateless frontend memory)
     const history = messages.slice(-5)
     
-    setMessages(prev => [...prev, { role: 'user', text: userMsg }])
+    setMessages(prev => [...prev, { role: 'user', text: userMsg }, { role: 'assistant', text: '' }])
     setLoading(true)
 
     try {
@@ -44,13 +44,41 @@ export default function Chatbot({ authFetch, CATEGORY_VI }) {
 
       if (!res.ok) throw new Error('Failed to fetch from chat API')
 
-      const data = await res.json()
-      setMessages(prev => [...prev, { role: 'assistant', text: data.reply }])
-      
-      // If the reply mentions setting a budget, we might want to refresh the parent component's data
-      // but for now, the user can just hit refresh on the dashboard.
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder("utf-8")
+      let done = false
+
+      while (!done) {
+        const { value, done: doneReading } = await reader.read()
+        done = doneReading
+        if (value) {
+          const chunkStr = decoder.decode(value, { stream: true })
+          const lines = chunkStr.split('\n')
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+                if (data.text) {
+                  setMessages(prev => {
+                    const newMessages = [...prev]
+                    newMessages[newMessages.length - 1].text += data.text
+                    return newMessages
+                  })
+                }
+              } catch (e) {
+                console.error("Error parsing SSE JSON:", e)
+              }
+            }
+          }
+        }
+      }
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'assistant', text: `Lỗi: ${err.message}` }])
+      setMessages(prev => {
+        const newMessages = [...prev]
+        newMessages[newMessages.length - 1].text += `\n\nLỗi: ${err.message}`
+        return newMessages
+      })
     } finally {
       setLoading(false)
     }

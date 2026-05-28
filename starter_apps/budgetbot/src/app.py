@@ -266,14 +266,17 @@ class ChatBody(BaseModel):
     message: str
     history: Optional[List[ChatHistoryMessage]] = None
 
+from fastapi.responses import StreamingResponse
+
 @app.post("/chat")
 def chat(
     request: Request,
     body: ChatBody,
     x_user_id: Optional[str] = Header(default=None),
-) -> dict:
+) -> StreamingResponse:
     history_dict = [m.dict() for m in body.history] if body.history else []
-    return handlers.handle_chat(_resolve_user_id(request, x_user_id), body.message, history_dict, userstore, chatbot_client)
+    generator = handlers.handle_chat(_resolve_user_id(request, x_user_id), body.message, history_dict, userstore, chatbot_client)
+    return StreamingResponse(generator, media_type="text/event-stream")
 
 @app.get("/budgets")
 def get_budgets(

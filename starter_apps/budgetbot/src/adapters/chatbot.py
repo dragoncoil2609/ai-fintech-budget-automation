@@ -33,7 +33,7 @@ class ChatbotAI:
         self.runtime = boto3.client("bedrock-runtime", region_name=region)
         self.model_id = model_id
 
-    def chat(self, user_id: str, message: str, history: list, transactions: list, budgets: dict, summary: dict, userstore: Any) -> str:
+    def chat(self, user_id: str, message: str, history: list, transactions: list, budgets: dict, summary: dict, userstore: Any):
         # Format transactions
         txns_str = "\n".join([f"- {t['date']}: {t['description']} ({t['amount']}) [{t['category']}]" for t in transactions])
         if not txns_str:
@@ -51,7 +51,6 @@ class ChatbotAI:
 
         system_text = CHATBOT_SYSTEM_PROMPT.format(transactions=txns_str, budgets=budgets_str, summary=summary_str)
 
-        # Define the set_budget tool
         tool_config = {
             "tools": [
                 {
@@ -78,75 +77,94 @@ class ChatbotAI:
             role = msg.get("role")
             text = msg.get("text", "")
             if role in ["user", "assistant"]:
-                # Filter out consecutive identical roles (AWS Converse requires strict alternating roles)
                 if messages and messages[-1]["role"] == role:
                     messages[-1]["content"][0]["text"] += "\n\n" + text
                 else:
                     messages.append({"role": role, "content": [{"text": text}]})
 
-        # AWS Bedrock Converse API strictly requires the first message to be from a "user"
         while messages and messages[0]["role"] != "user":
             messages.pop(0)
 
-        # Append the new message
         if messages and messages[-1]["role"] == "user":
             messages[-1]["content"][0]["text"] += "\n\n" + message
         else:
             messages.append({"role": "user", "content": [{"text": message}]})
 
-        try:
-            # 1. Send initial message
-            response = self.runtime.converse(
-                modelId=self.model_id,
-                system=[{"text": system_text}],
-                messages=messages,
-                toolConfig=tool_config,
-                inferenceConfig={"temperature": 0.3}
-            )
-
-            output_message = response["output"]["message"]
-            messages.append(output_message)
-
-            # 2. Check if a tool was called
-            tool_calls = [c["toolUse"] for c in output_message["content"] if "toolUse" in c]
-            
-            if tool_calls:
-                tool_results = []
-                for tool_call in tool_calls:
-                    if tool_call["name"] == "set_budget":
-                        args = tool_call["input"]
-                        category = args["category"]
-                        amount = float(args["amount"])
-                        
-                        # Execute the tool
-                        userstore.set_budget(user_id, category, amount)
-                        
-                        # Return result
-                        tool_results.append({
-                            "toolResult": {
-                                "toolUseId": tool_call["toolUseId"],
-                                "content": [{"json": {"status": "success", "message": f"Budget for {category} set to {amount}"}}]
-                            }
-                        })
-                
-                # 3. Send tool results back to LLM for final answer
-                messages.append({"role": "user", "content": tool_results})
-                final_response = self.runtime.converse(
+        def stream_generator():
+            try:
+                response = self.runtime.converse_stream(
                     modelId=self.model_id,
                     system=[{"text": system_text}],
                     messages=messages,
                     toolConfig=tool_config,
                     inferenceConfig={"temperature": 0.3}
                 )
-                return final_response["output"]["message"]["content"][0]["text"]
-            else:
-                # No tool called, just return the text
-                for content in output_message["content"]:
-                    if "text" in content:
-                        return content["text"]
-                return "I couldn't process that."
 
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return f"Oops! I encountered an error: {e}"
+                tool_use_id = None
+                tool_name = None
+                tool_input_str = ""
+                is_tool_call = False
+
+                for event in response.get('stream', []):
+                    if 'contentBlockStart' in event:
+                        start = event['contentBlockStart'].get('start', {})
+                        if 'toolUse' in start:
+                            is_tool_call = True
+                            tool = start['toolUse']
+                            tool_use_id = tool['toolUseId']
+                            tool_name = tool['name']
+                            
+                    elif 'contentBlockDelta' in event:
+                        delta = event['contentBlockDelta'].get('delta', {})
+                        if 'text' in delta:
+                            yield delta['text']
+                        elif 'toolUse' in delta:
+                            tool_input_str += delta['toolUse']['input']
+
+                if is_tool_call:
+                    # Execute tool
+                    tool_input = json.loads(tool_input_str)
+                    if tool_name == "set_budget":
+                        category = tool_input.get("category")
+                        amount = float(tool_input.get("amount", 0))
+                        userstore.set_budget(user_id, category, amount)
+                        
+                        tool_result = {
+                            "toolResult": {
+                                "toolUseId": tool_use_id,
+                                "content": [{"json": {"status": "success", "message": f"Budget for {category} set to {amount}"}}]
+                            }
+                        }
+                        
+                        messages.append({
+                            "role": "assistant",
+                            "content": [{
+                                "toolUse": {
+                                    "toolUseId": tool_use_id,
+                                    "name": tool_name,
+                                    "input": tool_input
+                                }
+                            }]
+                        })
+                        messages.append({"role": "user", "content": [tool_result]})
+                        
+                        # Second call to get final answer
+                        second_response = self.runtime.converse_stream(
+                            modelId=self.model_id,
+                            system=[{"text": system_text}],
+                            messages=messages,
+                            toolConfig=tool_config,
+                            inferenceConfig={"temperature": 0.3}
+                        )
+                        for event in second_response.get('stream', []):
+                            if 'contentBlockDelta' in event:
+                                delta = event['contentBlockDelta'].get('delta', {})
+                                if 'text' in delta:
+                                    yield delta['text']
+
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                yield f"\n\n[Error: {str(e)}]"
+
+        return stream_generator()

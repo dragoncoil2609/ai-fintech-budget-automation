@@ -481,12 +481,23 @@ def handle_clear_transactions(user_id: str, userstore) -> dict:
     userstore.clear_transactions(user_id)
     return {"status": "success"}
 
-def handle_chat(user_id: str, message: str, history: list, userstore, chatbot_client) -> dict:
+def handle_chat(user_id: str, message: str, history: list, userstore, chatbot_client):
     transactions = userstore.list_transactions(user_id)
     budgets = userstore.get_budgets(user_id)
     summary = userstore.summary(user_id)
-    reply = chatbot_client.chat(user_id, message, history, transactions, budgets, summary, userstore)
-    return {"reply": reply}
+    
+    stream_generator = chatbot_client.chat(user_id, message, history, transactions, budgets, summary, userstore)
+    
+    def sse_generator():
+        for chunk in stream_generator:
+            # SSE format: data: <content>\n\n
+            # Ensure newlines in chunk are properly handled if necessary, 
+            # though usually just passing the string is fine.
+            # Replace newlines in chunk with a placeholder or just send JSON to be safe.
+            import json
+            yield f"data: {json.dumps({'text': chunk})}\n\n"
+            
+    return sse_generator()
 
 def handle_get_budgets(user_id: str, userstore) -> dict:
     budgets = userstore.get_budgets(user_id)
