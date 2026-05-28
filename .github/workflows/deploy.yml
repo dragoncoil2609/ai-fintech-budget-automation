@@ -51,7 +51,7 @@ jobs:
 
       - name: Build Frontend (React + Vite)
         env:
-          VITE_API_BASE_URL: https://nkpmczaztg.execute-api.us-west-2.amazonaws.com/api
+          VITE_API_BASE_URL: https://nkpmczaztg.execute-api.us-west-2.amazonaws.com
         run: |
           cd starter_apps/budgetbot/frontend
           npm ci
