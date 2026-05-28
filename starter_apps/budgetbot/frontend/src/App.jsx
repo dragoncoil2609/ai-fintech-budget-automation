@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import './App.css'
+import AuthPage from './components/AuthPage.jsx'
+import { getCurrentToken, signOut, getUserEmail } from './auth/cognito.js'
 
 /* ────────────────────────────────────────────────────────────
    CONFIG
@@ -200,6 +202,27 @@ function EditModal({ txn, onClose, onSave }) {
    MAIN APP
 ──────────────────────────────────────────────────────────── */
 export default function App() {
+  /* ── AUTH STATE ── */
+  const [token, setToken]           = useState(null)   // JWT token
+  const [userEmail, setUserEmail]   = useState('')
+  const [authChecked, setAuthChecked] = useState(false) // prevent flicker
+
+  // Khôi phục session khi reload trang
+  useEffect(() => {
+    getCurrentToken().then(t => {
+      if (t) {
+        setToken(t)
+        setUserEmail(getUserEmail())
+      }
+      setAuthChecked(true)
+    })
+  }, [])
+
+  const handleAuthenticated = (newToken, email) => {
+    setToken(newToken)
+    setUserEmail(email)
+  }
+
   const [summary, setSummary]       = useState(null)
   const [transactions, setTxns]     = useState([])
   const [month, setMonth]           = useState('')
@@ -211,14 +234,31 @@ export default function App() {
   const [clearing, setClearing]     = useState(false)
   const fileRef                     = useRef()
 
+  const handleSignOut = () => {
+    signOut()
+    setToken(null)
+    setUserEmail('')
+    setSummary(null)
+    setTxns([])
+  }
+
+  /* ── authFetch: tự động đính token vào mọi API call ── */
+  const authFetch = useCallback((url, options = {}) => {
+    const headers = {
+      ...(options.headers || {}),
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    }
+    return fetch(url, { ...options, headers })
+  }, [token])
+
   /* --- Fetch data --- */
   const fetchData = useCallback(async (m) => {
     setLoading(true)
     try {
       const q = m ? `?month=${m}` : ''
       const [sumRes, txnRes] = await Promise.all([
-        fetch(`${API_BASE}/summary${q}`),
-        fetch(`${API_BASE}/transactions${q}`),
+        authFetch(`${API_BASE}/summary${q}`),
+        authFetch(`${API_BASE}/transactions${q}`),
       ])
       if (!sumRes.ok || !txnRes.ok) throw new Error('Không thể tải dữ liệu từ server')
       const sumData = await sumRes.json()
@@ -230,7 +270,7 @@ export default function App() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [authFetch])
 
   useEffect(() => { fetchData(month) }, [month, fetchData])
 
@@ -242,7 +282,7 @@ export default function App() {
     while (elapsed < MAX_WAIT * 1000) {
       await new Promise(r => setTimeout(r, INTERVAL))
       elapsed += INTERVAL
-      const res = await fetch(`${API_BASE}/job-status/${job_id}`)
+      const res = await authFetch(`${API_BASE}/job-status/${job_id}`)
       const job = await res.json()
       if (job.status === 'COMPLETED') {
         return { rows_inserted: job.rows_inserted, filename: job_id, sample_categorized: [] }
@@ -268,7 +308,7 @@ export default function App() {
 
     try {
       // Bước 1: Xin presigned URL từ backend
-      const reqRes = await fetch(`${API_BASE}/upload-request`, {
+      const reqRes = await authFetch(`${API_BASE}/upload-request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: file.name }),
@@ -285,7 +325,7 @@ export default function App() {
         // Fallback: local dev — file vẫn đi qua /upload như cũ
         const form = new FormData()
         form.append('file', file)
-        const res = await fetch(`${API_BASE}/upload`, { method: 'POST', body: form })
+        const res = await authFetch(`${API_BASE}/upload`, { method: 'POST', body: form })
         data = await res.json()
         if (!res.ok) throw new Error(data.detail || 'Upload thất bại')
       } else {
@@ -298,7 +338,7 @@ export default function App() {
         if (!putRes.ok) throw new Error(`Upload lên S3 thất bại (HTTP ${putRes.status})`)
 
         // Bước 3: Enqueue job vào SQS — trả về job_id ngay, không chờ xử lý
-        const enqueueRes = await fetch(`${API_BASE}/enqueue`, {
+        const enqueueRes = await authFetch(`${API_BASE}/enqueue`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ s3_key, filename: file.name }),
@@ -339,7 +379,7 @@ export default function App() {
   /* --- Edit category --- */
   const handleSaveCategory = async (txnId, category) => {
     try {
-      const res = await fetch(`${API_BASE}/transactions/${txnId}`, {
+      const res = await authFetch(`${API_BASE}/transactions/${txnId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category }),
@@ -356,7 +396,7 @@ export default function App() {
     if (!window.confirm('⚠️ Xóa toàn bộ giao dịch? Hành động này không thể hoàn tác!')) return
     setClearing(true)
     try {
-      await fetch(`${API_BASE}/transactions`, { method: 'DELETE' })
+      await authFetch(`${API_BASE}/transactions`, { method: 'DELETE' })
       setSummary(null)
       setTxns([])
       setAlert({ type: 'success', msg: 'Đã xóa toàn bộ dữ liệu giao dịch.' })
@@ -383,6 +423,12 @@ export default function App() {
   )]
 
   /* ──── RENDER ──── */
+  // Chờ kiểm tra session cũ xong rồi mới render (tránh flicker)
+  if (!authChecked) return null
+
+  // Chưa đăng nhập → hiển thị trang Auth
+  if (!token) return <AuthPage onAuthenticated={handleAuthenticated} />
+
   return (
     <div className="app-container">
       {/* ── HEADER ── */}
@@ -395,6 +441,7 @@ export default function App() {
           </div>
         </div>
         <div className="header-actions">
+          <span className="header-user-email" title={userEmail}>👤 {userEmail}</span>
           <button
             id="clear-btn"
             className="btn btn-danger btn-sm"
@@ -403,6 +450,14 @@ export default function App() {
             title="Xóa toàn bộ giao dịch"
           >
             {clearing ? <span className="spinner" /> : '🗑️'} Xóa dữ liệu
+          </button>
+          <button
+            id="logout-btn"
+            className="btn btn-ghost btn-sm"
+            onClick={handleSignOut}
+            title="Đăng xuất"
+          >
+            🚪 Đăng xuất
           </button>
         </div>
       </header>
