@@ -66,6 +66,16 @@ export const getCurrentToken = () => {
   });
 };
 
+export const resendConfirmationCode = (email) => {
+  return new Promise((resolve, reject) => {
+    const cognitoUser = new CognitoUser({ Username: email, Pool: userPool });
+    cognitoUser.resendConfirmationCode((err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
+};
+
 export const getUserEmail = () => {
   const user = userPool.getCurrentUser();
   return user ? user.getUsername() : '';

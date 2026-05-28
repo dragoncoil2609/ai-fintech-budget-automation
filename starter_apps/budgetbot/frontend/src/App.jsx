@@ -293,7 +293,7 @@ export default function App() {
       // QUEUED hoặc PROCESSING → tiếp tục poll
     }
     throw new Error('Xử lý quá thời gian chờ (2 phút)')
-  }, [])
+  }, [authFetch])
 
   /* --- Upload --- */
   const handleUpload = async (file) => {

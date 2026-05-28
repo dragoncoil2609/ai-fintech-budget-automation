@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { signIn, signUp, confirmSignUp } from '../auth/cognito.js'
+import { signIn, signUp, confirmSignUp, resendConfirmationCode } from '../auth/cognito.js'
 
 /* ── TAB: login | register | confirm ── */
 export default function AuthPage({ onAuthenticated }) {
