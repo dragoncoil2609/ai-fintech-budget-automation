@@ -5,7 +5,7 @@ from typing import Optional
 import boto3
 import uuid
 
-from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -48,8 +48,30 @@ storage = factory.make_storage()
 userstore = factory.make_userstore()
 
 
-def _resolve_user_id(x_user_id: Optional[str]) -> str:
+def _resolve_user_id(request, x_user_id: Optional[str] = None) -> str:
+    """Lấy user_id thực từ JWT Claims (Cognito sub) do API Gateway v2 nhúng vào.
+    
+    Khi API Gateway xác thực JWT thành công, nó nhúng claims vào:
+    event["requestContext"]["authorizer"]["jwt"]["claims"]["sub"]
+    Mangum chuyển event này vào request.scope["aws.event"].
+    
+    Fallback: X-User-Id header (local dev) hoặc config.default_user_id.
+    """
+    try:
+        event = request.scope.get("aws.event", {})
+        sub = (
+            event.get("requestContext", {})
+                 .get("authorizer", {})
+                 .get("jwt", {})
+                 .get("claims", {})
+                 .get("sub")
+        )
+        if sub:
+            return sub
+    except Exception:
+        pass
     return x_user_id or config.default_user_id
+
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
@@ -70,11 +92,12 @@ def health() -> dict:
 
 @app.post("/upload")
 async def upload(
+    request: Request,
     file: UploadFile = File(...),
     x_user_id: Optional[str] = Header(default=None),
 ) -> dict:
     """Luồng upload cũ: file đi qua Lambda (multipart). Giữ nguyên cho local dev / fallback."""
-    user_id = _resolve_user_id(x_user_id)
+    user_id = _resolve_user_id(request, x_user_id)
     data = await file.read()
     if len(data) > config.max_upload_size:
         raise HTTPException(status_code=413, detail=f"File too large (max {config.max_upload_size // 1024 // 1024} MB)")
@@ -98,6 +121,7 @@ class UploadRequestBody(BaseModel):
 
 @app.post("/upload-request")
 def upload_request(
+    request: Request,
     body: UploadRequestBody,
     x_user_id: Optional[str] = Header(default=None),
 ) -> dict:
@@ -108,7 +132,7 @@ def upload_request(
     Nếu storage backend không hỗ trợ presigned URL (ví dụ local dev),
     trả về upload_url=null để frontend fallback về /upload.
     """
-    user_id = _resolve_user_id(x_user_id)
+    user_id = _resolve_user_id(request, x_user_id)
     filename = body.filename or "statement.csv"
 
     try:
@@ -151,15 +175,12 @@ class ProcessBody(BaseModel):
 
 @app.post("/process")
 def process(
+    request: Request,
     body: ProcessBody,
     x_user_id: Optional[str] = Header(default=None),
 ) -> dict:
-    """Bước 3 của luồng Presigned URL:
-    Frontend đã upload file lên S3 thành công → gọi endpoint này để Lambda đọc
-    file từ S3 bằng s3_key, rồi phân loại giao dịch bằng AI và lưu vào DB.
-    Lambda không nhận payload file — chỉ nhận s3_key (chuỗi nhỏ).
-    """
-    user_id = _resolve_user_id(x_user_id)
+    """Bước 3 của luồng Presigned URL:"""
+    user_id = _resolve_user_id(request, x_user_id)
 
     if not body.s3_key:
         raise HTTPException(status_code=400, detail="s3_key is required")
@@ -187,14 +208,12 @@ class EnqueueBody(BaseModel):
 
 @app.post("/enqueue")
 def enqueue(
+    request: Request,
     body: EnqueueBody,
     x_user_id: Optional[str] = Header(default=None),
 ) -> dict:
-    """Luồng SQS async:
-    Frontend đã PUT file lên S3 → gọi endpoint này để Lambda tạo job_id,
-    gửi message vào SQS và trả về job_id ngay. Không cần chờ xử lý AI/RDS.
-    """
-    user_id = _resolve_user_id(x_user_id)
+    """Luồng SQS async."""
+    user_id = _resolve_user_id(request, x_user_id)
 
     if not body.s3_key:
         raise HTTPException(status_code=400, detail="s3_key is required")
@@ -237,19 +256,21 @@ def job_status(
 
 @app.get("/summary")
 def summary(
+    request: Request,
     month: Optional[str] = None,
     x_user_id: Optional[str] = Header(default=None),
 ) -> dict:
     """`month` format: YYYY-MM. Omit for all-time summary."""
-    return handlers.handle_summary(_resolve_user_id(x_user_id), month, userstore)
+    return handlers.handle_summary(_resolve_user_id(request, x_user_id), month, userstore)
 
 
 @app.get("/transactions")
 def transactions(
+    request: Request,
     month: Optional[str] = None,
     x_user_id: Optional[str] = Header(default=None),
 ) -> dict:
-    return handlers.handle_list_transactions(_resolve_user_id(x_user_id), month, userstore)
+    return handlers.handle_list_transactions(_resolve_user_id(request, x_user_id), month, userstore)
 
 
 class CategoryUpdate(BaseModel):
@@ -258,18 +279,20 @@ class CategoryUpdate(BaseModel):
 
 @app.patch("/transactions/{txn_id}")
 def update_category(
+    request: Request,
     txn_id: int,
     data: CategoryUpdate,
     x_user_id: Optional[str] = Header(default=None),
 ) -> dict:
-    return handlers.handle_update_category(_resolve_user_id(x_user_id), txn_id, data.category, userstore)
+    return handlers.handle_update_category(_resolve_user_id(request, x_user_id), txn_id, data.category, userstore)
 
 
 @app.delete("/transactions")
 def clear_transactions(
+    request: Request,
     x_user_id: Optional[str] = Header(default=None),
 ) -> dict:
-    return handlers.handle_clear_transactions(_resolve_user_id(x_user_id), userstore)
+    return handlers.handle_clear_transactions(_resolve_user_id(request, x_user_id), userstore)
 
 
 # ── Static frontend ───────────────────────────────────────────────────────────
