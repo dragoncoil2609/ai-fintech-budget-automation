@@ -413,7 +413,7 @@ export default function App() {
 
   /* --- Poll job status --- */
   const pollJobStatus = useCallback(async (job_id) => {
-    const MAX_WAIT = 120  // tối đa 2 phút
+    const MAX_WAIT = 600  // tối đa 10 phút
     const INTERVAL = 2000 // poll mỗi 2 giây
     let elapsed = 0
     while (elapsed < MAX_WAIT * 1000) {
@@ -429,7 +429,7 @@ export default function App() {
       }
       // QUEUED hoặc PROCESSING → tiếp tục poll
     }
-    throw new Error('Xử lý quá thời gian chờ (2 phút)')
+    throw new Error('Xử lý quá thời gian chờ (10 phút)')
   }, [authFetch])
 
   const handleUploadClick = (file) => {
