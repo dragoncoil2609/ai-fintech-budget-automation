@@ -234,6 +234,27 @@ export default function App() {
 
   useEffect(() => { fetchData(month) }, [month, fetchData])
 
+  /* --- Poll job status --- */
+  const pollJobStatus = useCallback(async (job_id) => {
+    const MAX_WAIT = 120  // tối đa 2 phút
+    const INTERVAL = 2000 // poll mỗi 2 giây
+    let elapsed = 0
+    while (elapsed < MAX_WAIT * 1000) {
+      await new Promise(r => setTimeout(r, INTERVAL))
+      elapsed += INTERVAL
+      const res = await fetch(`${API_BASE}/job-status/${job_id}`)
+      const job = await res.json()
+      if (job.status === 'COMPLETED') {
+        return { rows_inserted: job.rows_inserted, filename: job_id, sample_categorized: [] }
+      }
+      if (job.status === 'FAILED') {
+        throw new Error(`Xử lý thất bại: ${job.error || 'Lỗi không xác định'}`)
+      }
+      // QUEUED hoặc PROCESSING → tiếp tục poll
+    }
+    throw new Error('Xử lý quá thời gian chờ (2 phút)')
+  }, [])
+
   /* --- Upload --- */
   const handleUpload = async (file) => {
     if (!file) return
@@ -276,14 +297,20 @@ export default function App() {
         })
         if (!putRes.ok) throw new Error(`Upload lên S3 thất bại (HTTP ${putRes.status})`)
 
-        // Bước 3: Báo backend xử lý file từ S3
-        const processRes = await fetch(`${API_BASE}/process`, {
+        // Bước 3: Enqueue job vào SQS — trả về job_id ngay, không chờ xử lý
+        const enqueueRes = await fetch(`${API_BASE}/enqueue`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ s3_key, filename: file.name }),
         })
-        data = await processRes.json()
-        if (!processRes.ok) throw new Error(data.detail || 'Xử lý file thất bại')
+        const enqueueData = await enqueueRes.json()
+        if (!enqueueRes.ok) throw new Error(enqueueData.detail || 'Enqueue thất bại')
+
+        const { job_id } = enqueueData
+        setAlert({ type: 'warning', msg: `⏳ Đang xử lý file... (job: ${job_id.slice(0, 8)})` })
+
+        // Bước 4: Polling job status mỗi 2 giây
+        data = await pollJobStatus(job_id)
       }
 
       const fallbackCount = (data.sample_categorized || []).filter(

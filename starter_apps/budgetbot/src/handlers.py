@@ -1,7 +1,12 @@
 """Endpoint business logic for BudgetBot."""
 import csv
 import io
+import json
+import uuid
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_csv(data: bytes) -> list:
@@ -170,6 +175,93 @@ def handle_process_from_s3(
     data = storage.get(s3_key)
     location = f"s3://{s3_key}"
     return _categorize_and_save(user_id, filename, data, location, ai_client, userstore)
+
+
+def handle_enqueue(
+    user_id: str,
+    s3_key: str,
+    filename: str,
+    sqs_queue_url: str,
+    userstore,
+) -> dict:
+    """Gửi message vào SQS để xử lý file bất đồng bộ.
+    Trả về job_id ngay lập tức — frontend không cần chờ Bedrock/RDS.
+    """
+    import boto3
+    job_id = str(uuid.uuid4())
+
+    # Lưu job vào DB với status QUEUED
+    userstore.create_job(job_id=job_id, user_id=user_id, s3_key=s3_key, filename=filename)
+
+    # Gửi message vào SQS
+    sqs = boto3.client("sqs", region_name="us-west-2")
+    message = {
+        "job_id": job_id,
+        "user_id": user_id,
+        "s3_key": s3_key,
+        "filename": filename,
+    }
+    sqs.send_message(
+        QueueUrl=sqs_queue_url,
+        MessageBody=json.dumps(message),
+    )
+
+    logger.info({"event": "job_enqueued", "job_id": job_id, "s3_key": s3_key})
+
+    return {
+        "job_id": job_id,
+        "status": "QUEUED",
+        "message": "File đã được đưa vào hàng đợi xử lý",
+    }
+
+
+def handle_job_status(job_id: str, userstore) -> dict:
+    """Trả về trạng thái của job theo job_id."""
+    job = userstore.get_job(job_id)
+    if not job:
+        return {"job_id": job_id, "status": "NOT_FOUND"}
+    return job
+
+
+def handle_sqs_event(event: dict, storage, ai_client, userstore) -> dict:
+    """Xử lý SQS event — được trigger bởi SQS khi có message mới.
+    Đọc file từ S3, parse CSV/PDF, gọi Bedrock, lưu RDS, cập nhật job status.
+    """
+    results = []
+    for record in event.get("Records", []):
+        try:
+            message = json.loads(record["body"])
+            job_id = message["job_id"]
+            user_id = message["user_id"]
+            s3_key = message["s3_key"]
+            filename = message["filename"]
+
+            logger.info({"event": "sqs_job_start", "job_id": job_id, "s3_key": s3_key})
+
+            # Cập nhật status → PROCESSING
+            userstore.update_job_status(job_id, "PROCESSING")
+
+            # Xử lý file
+            data = storage.get(s3_key)
+            location = f"s3://{s3_key}"
+            result = _categorize_and_save(user_id, filename, data, location, ai_client, userstore)
+
+            # Cập nhật status → COMPLETED
+            userstore.update_job_status(job_id, "COMPLETED", rows_inserted=result["rows_inserted"])
+
+            logger.info({"event": "sqs_job_done", "job_id": job_id, "rows": result["rows_inserted"]})
+            results.append({"job_id": job_id, "status": "COMPLETED"})
+
+        except Exception as exc:
+            job_id = message.get("job_id", "unknown") if "message" in dir() else "unknown"
+            logger.exception({"event": "sqs_job_failed", "job_id": job_id, "error": str(exc)})
+            try:
+                userstore.update_job_status(job_id, "FAILED", error=str(exc))
+            except Exception:
+                pass
+            raise  # Re-raise để SQS retry
+
+    return {"processed": len(results)}
 
 
 

@@ -160,6 +160,52 @@ def process(
         raise HTTPException(status_code=500, detail=f"Lỗi xử lý file từ S3: {exc}") from exc
 
 
+class EnqueueBody(BaseModel):
+    s3_key: str
+    filename: str
+
+
+@app.post("/enqueue")
+def enqueue(
+    body: EnqueueBody,
+    x_user_id: Optional[str] = Header(default=None),
+) -> dict:
+    """Luồng SQS async:
+    Frontend đã PUT file lên S3 → gọi endpoint này để Lambda tạo job_id,
+    gửi message vào SQS và trả về job_id ngay. Không cần chờ xử lý AI/RDS.
+    """
+    user_id = _resolve_user_id(x_user_id)
+    if not body.s3_key:
+        raise HTTPException(status_code=400, detail="s3_key is required")
+    if not body.filename:
+        raise HTTPException(status_code=400, detail="filename is required")
+    if not config.sqs_queue_url:
+        raise HTTPException(status_code=503, detail="SQS_QUEUE_URL chưa được cấu hình")
+
+    try:
+        return handlers.handle_enqueue(
+            user_id=user_id,
+            s3_key=body.s3_key,
+            filename=body.filename,
+            sqs_queue_url=config.sqs_queue_url,
+            userstore=userstore,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Lỗi enqueue: {exc}") from exc
+
+
+@app.get("/job-status/{job_id}")
+def job_status(
+    job_id: str,
+    x_user_id: Optional[str] = Header(default=None),
+) -> dict:
+    """Trả về trạng thái xử lý của job theo job_id.
+    Frontend polling endpoint này mỗi 2 giây sau khi enqueue.
+    Status: QUEUED → PROCESSING → COMPLETED | FAILED
+    """
+    return handlers.handle_job_status(job_id=job_id, userstore=userstore)
+
+
 # ── Transactions & Summary ────────────────────────────────────────────────────
 
 @app.get("/summary")
@@ -213,4 +259,17 @@ if config.serve_frontend:
 
 # ── AWS Lambda Handler ────────────────────────────────────────────────────────
 if Mangum:
-    handler = Mangum(app)
+    _mangum_handler = Mangum(app)
+
+    def handler(event, context):
+        """Lambda entrypoint — phân biệt SQS event và API Gateway event."""
+        # SQS event
+        if "Records" in event and event["Records"] and event["Records"][0].get("eventSource") == "aws:sqs":
+            return handlers.handle_sqs_event(
+                event=event,
+                storage=storage,
+                ai_client=ai_client,
+                userstore=userstore,
+            )
+        # API Gateway event
+        return _mangum_handler(event, context)

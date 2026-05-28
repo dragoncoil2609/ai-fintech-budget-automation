@@ -76,6 +76,17 @@ class PostgresUserStore:
                 );
                 CREATE INDEX IF NOT EXISTS txn_user_date_idx ON transactions(user_id, txn_date);
                 CREATE INDEX IF NOT EXISTS txn_user_cat_idx ON transactions(user_id, category);
+                CREATE TABLE IF NOT EXISTS upload_jobs (
+                    job_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    s3_key TEXT NOT NULL,
+                    filename TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'QUEUED',
+                    rows_inserted INTEGER DEFAULT 0,
+                    error TEXT,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
             """)
 
     def add_transaction(self, user_id: str, txn: dict) -> None:
@@ -122,6 +133,31 @@ class PostgresUserStore:
             cur.execute(sql, params)
             return {r[0]: {"total": float(r[1]), "count": int(r[2])} for r in cur.fetchall()}
 
+    def create_job(self, job_id: str, user_id: str, s3_key: str, filename: str) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO upload_jobs (job_id, user_id, s3_key, filename, status) VALUES (%s, %s, %s, %s, 'QUEUED')",
+                (job_id, user_id, s3_key, filename),
+            )
+
+    def get_job(self, job_id: str) -> dict | None:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT job_id, user_id, status, rows_inserted, error, created_at, updated_at FROM upload_jobs WHERE job_id = %s",
+                (job_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            return {"job_id": r[0], "user_id": r[1], "status": r[2], "rows_inserted": r[3], "error": r[4], "created_at": str(r[5]), "updated_at": str(r[6])}
+
+    def update_job_status(self, job_id: str, status: str, rows_inserted: int = 0, error: str = None) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "UPDATE upload_jobs SET status = %s, rows_inserted = %s, error = %s, updated_at = NOW() WHERE job_id = %s",
+                (status, rows_inserted, error, job_id),
+            )
+
 
 class SQLiteUserStore:
     def __init__(self, db_path: str):
@@ -144,6 +180,17 @@ class SQLiteUserStore:
             );
             CREATE INDEX IF NOT EXISTS txn_user_date_idx ON transactions(user_id, txn_date);
             CREATE INDEX IF NOT EXISTS txn_user_cat_idx ON transactions(user_id, category);
+            CREATE TABLE IF NOT EXISTS upload_jobs (
+                job_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                s3_key TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'QUEUED',
+                rows_inserted INTEGER DEFAULT 0,
+                error TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
         """)
         self.conn.commit()
 
@@ -181,6 +228,30 @@ class SQLiteUserStore:
 
     def summary(self, user_id: str, month: str | None = None) -> dict:
         return _aggregate(self.list_transactions(user_id, month))
+
+    def create_job(self, job_id: str, user_id: str, s3_key: str, filename: str) -> None:
+        self.conn.execute(
+            "INSERT INTO upload_jobs (job_id, user_id, s3_key, filename, status) VALUES (?, ?, ?, ?, 'QUEUED')",
+            (job_id, user_id, s3_key, filename),
+        )
+        self.conn.commit()
+
+    def get_job(self, job_id: str) -> dict | None:
+        cur = self.conn.execute(
+            "SELECT job_id, user_id, status, rows_inserted, error, created_at, updated_at FROM upload_jobs WHERE job_id = ?",
+            (job_id,),
+        )
+        r = cur.fetchone()
+        if not r:
+            return None
+        return {"job_id": r[0], "user_id": r[1], "status": r[2], "rows_inserted": r[3], "error": r[4], "created_at": r[5], "updated_at": r[6]}
+
+    def update_job_status(self, job_id: str, status: str, rows_inserted: int = 0, error: str = None) -> None:
+        self.conn.execute(
+            "UPDATE upload_jobs SET status = ?, rows_inserted = ?, error = ?, updated_at = CURRENT_TIMESTAMP WHERE job_id = ?",
+            (status, rows_inserted, error, job_id),
+        )
+        self.conn.commit()
 
 
 def _aggregate(rows: list) -> dict:
