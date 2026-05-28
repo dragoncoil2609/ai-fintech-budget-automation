@@ -31,7 +31,7 @@ class ChatbotAI:
         self.runtime = boto3.client("bedrock-runtime", region_name=region)
         self.model_id = model_id
 
-    def chat(self, user_id: str, message: str, transactions: list, budgets: dict, summary: dict, userstore: Any) -> str:
+    def chat(self, user_id: str, message: str, history: list, transactions: list, budgets: dict, summary: dict, userstore: Any) -> str:
         # Format transactions
         txns_str = "\n".join([f"- {t['date']}: {t['description']} ({t['amount']}) [{t['category']}]" for t in transactions])
         if not txns_str:
@@ -71,7 +71,26 @@ class ChatbotAI:
             ]
         }
 
-        messages = [{"role": "user", "content": [{"text": message}]}]
+        messages = []
+        for msg in history:
+            role = msg.get("role")
+            text = msg.get("text", "")
+            if role in ["user", "assistant"]:
+                # Filter out consecutive identical roles (AWS Converse requires strict alternating roles)
+                if messages and messages[-1]["role"] == role:
+                    messages[-1]["content"][0]["text"] += "\n\n" + text
+                else:
+                    messages.append({"role": role, "content": [{"text": text}]})
+
+        # AWS Bedrock Converse API strictly requires the first message to be from a "user"
+        while messages and messages[0]["role"] != "user":
+            messages.pop(0)
+
+        # Append the new message
+        if messages and messages[-1]["role"] == "user":
+            messages[-1]["content"][0]["text"] += "\n\n" + message
+        else:
+            messages.append({"role": "user", "content": [{"text": message}]})
 
         try:
             # 1. Send initial message

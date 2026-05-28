@@ -28,6 +28,10 @@ export default function Chatbot({ authFetch, CATEGORY_VI }) {
 
     const userMsg = input.trim()
     setInput('')
+    
+    // Grab the last 5 messages for context (stateless frontend memory)
+    const history = messages.slice(-5)
+    
     setMessages(prev => [...prev, { role: 'user', text: userMsg }])
     setLoading(true)
 
@@ -35,7 +39,7 @@ export default function Chatbot({ authFetch, CATEGORY_VI }) {
       const res = await authFetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMsg }),
+        body: JSON.stringify({ message: userMsg, history: history }),
       })
 
       if (!res.ok) throw new Error('Failed to fetch from chat API')

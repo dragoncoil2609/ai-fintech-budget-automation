@@ -256,8 +256,15 @@ def job_status(
 
 # ── Chatbot & Budgets ─────────────────────────────────────────────────────────
 
+from typing import Optional, List
+
+class ChatHistoryMessage(BaseModel):
+    role: str
+    text: str
+
 class ChatBody(BaseModel):
     message: str
+    history: Optional[List[ChatHistoryMessage]] = None
 
 @app.post("/chat")
 def chat(
@@ -265,7 +272,8 @@ def chat(
     body: ChatBody,
     x_user_id: Optional[str] = Header(default=None),
 ) -> dict:
-    return handlers.handle_chat(_resolve_user_id(request, x_user_id), body.message, userstore, chatbot_client)
+    history_dict = [m.dict() for m in body.history] if body.history else []
+    return handlers.handle_chat(_resolve_user_id(request, x_user_id), body.message, history_dict, userstore, chatbot_client)
 
 @app.get("/budgets")
 def get_budgets(
