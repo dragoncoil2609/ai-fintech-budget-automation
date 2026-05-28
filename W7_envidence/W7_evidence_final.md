@@ -35,10 +35,10 @@ Sao kê ngân hàng đã mã hóa và nằm rải rác trên nhiều định d�
 3. Backend phân tích sao kê (xử lý bất đồng bộ qua SQS) → AI phân loại từng giao dịch.
 4. Dashboard hiển thị phân tích, theo dõi ngân sách, xu hướng chi tiêu.
 
-### 1.3 Tại sao chọn use case này (Dưới góc nhìn Technical)?
-- **Giải quyết bài toán Data Pipeline điển hình:** Việc trích xuất dữ liệu thô từ file (S3) -> làm sạch & phân tích (Lambda + Bedrock) -> lưu trữ có cấu trúc để truy vấn (RDS) là một luồng xử lý dữ liệu tiêu chuẩn, cho phép team phô diễn kỹ năng kết nối các dịch vụ cốt lõi của AWS.
-- **Tính chất "Burst Traffic" lý tưởng để demo Serverless:** Hành vi người dùng thường dồn dập upload sao kê vào cuối tháng. Đặc thù traffic "lúc bùng nổ, lúc trống trơn" này là sân khấu hoàn hảo để trình diễn sức mạnh kiến trúc Serverless: Scale-to-Zero tiết kiệm tiền khi rảnh rỗi, và dùng hàng đợi SQS làm buffer chống sập hệ thống (Anti-Spike) khi tải cao.
-- **Xử lý Unstructured Data bằng AI-native:** Dữ liệu sao kê ngân hàng ở Việt Nam rất lộn xộn, viết tắt, không theo chuẩn. Thay vì phải bảo trì hàng nghìn dòng code Regex (Regular Expression) cứng nhắc, việc ứng dụng LLM (**Amazon Nova Lite 2** qua Bedrock) giúp biến đổi dữ liệu phi cấu trúc thành dữ liệu có cấu trúc (Structured Data) một cách linh hoạt, minh chứng giá trị thực tiễn của AI.
+### 1.3 Lý do lựa chọn use case (Phân tích kỹ thuật)
+- **Bài toán Data Pipeline điển hình:** Luồng xử lý trích xuất dữ liệu thô từ file (S3) → phân loại bằng AI (Lambda + Bedrock) → lưu trữ có cấu trúc (RDS) là một kiến trúc chuẩn trong lĩnh vực xử lý dữ liệu, cho phép nhóm triển khai và tích hợp đồng thời nhiều dịch vụ cốt lõi của AWS.
+- **Đặc thù tải bùng phát (Burst Traffic) phù hợp với Serverless:** Hành vi người dùng cuối tháng thường tải lên sao kê đồng loạt, tạo ra mô hình traffic dạng spike. Đặc điểm này cho phép nhóm khai thác tối đa lợi thế Scale-to-Zero của Lambda (tối ưu chi phí khi rảnh) và cơ chế điều tiết tải bằng SQS (Anti-Spike) khi tải cao.
+- **Dữ liệu phi cấu trúc phù hợp với AI:** Sao kê ngân hàng tại Việt Nam thường không theo chuẩn thống nhất về định dạng và từ viết tắt. Việc áp dụng LLM (**Amazon Nova Lite 2** qua Bedrock) để phân loại tự động thay thế cho phương pháp Regex cứng nhắc là minh chứng cho ứng dụng AI thực tế trong bài toán xử lý dữ liệu tài chính.
 
 ---
 
@@ -137,6 +137,22 @@ Dưới đây là chi tiết luồng hoạt động kỹ thuật và các quyế
   - **Cognito JWT Authorizer (gắn tại API Gateway):** Từ chối ngay lập tức các request mạo danh, không có token hợp lệ.
   - **Kết quả:** Thay vì để Request rác lọt vào trong đánh thức Lambda (gây tốn tiền Compute vô ích), kiến trúc này tiêu diệt hiểm họa từ vòng gửi xe. **Tiết kiệm 100% chi phí xử lý request rác!**
 
+### 4.4 Lựa chọn Compute: Lambda vs. ECS vs. EC2
+
+- **Phương án đã cân nhắc:**
+
+  | Tiêu chí | **AWS Lambda** *(Chọn)* | ECS Fargate | EC2 |
+  |---|---|---|---|
+  | Chi phí khi không có traffic | **$0** (Scale-to-Zero) | ~$1.5/ngày (task chạy liên tục) | ~$2-5/ngày (instance luôn chạy) |
+  | Thời gian setup | **Thấp** | Trung bình (cần cluster, task def.) | Cao (cần provision, patch OS) |
+  | Quản lý hạ tầng | **Không cần** | Một phần | Toàn bộ |
+  | Phù hợp tải Hackathon | **Rất cao** | Trung bình | Thấp |
+
+- **Lý do quyết định chọn Lambda:**
+  1. **Tối ưu chi phí tuyệt đối cho môi trường Hackathon:** Hệ thống chỉ phát sinh chi phí compute khi thực sự có request. Trong 48H, phần lớn thời gian không có traffic → ECS/EC2 sẽ lãng phí ngân sách.
+  2. **Xử lý Docker Image:** Nhóm đóng gói FastAPI thành Docker Container để vượt giới hạn code 250MB, đồng thời tận dụng khả năng Scale-to-Zero mà ECS không có.
+  3. **Tích hợp Event-driven tự nhiên:** Lambda kết nối trực tiếp với SQS Trigger — mỗi message trong hàng đợi tự động kích hoạt một Lambda Worker độc lập mà không cần code orchestration phức tạp như ECS Tasks.
+
 ---
 
 ## 5. Các Bước Hoàn Thành Bonus (Điểm Cộng)
@@ -158,14 +174,15 @@ Dưới đây là chi tiết luồng hoạt động kỹ thuật và các quyế
 
 ## 6. Phân tích chi phí (Bonus #9 - Advanced Cost Insights)
 
-### 6.1 Ước tính chi phí 48H vs Thực tế
-*(Học viên tự điền chi phí thực tế vào sáng Demo Day dựa trên Cost Explorer)*
+### 6.1 Chi phí thực tế 48H
+
 - **Ngân sách tối đa:** $100
-- **Chi phí dự kiến 48h:** ~$5.60 (Tối ưu cực đoan)
-- **Top 3 Cost Drivers:** 
-  - **RDS Multi-AZ:** ~$3.80 (Sự đánh đổi xứng đáng: Chi thêm tiền để hệ thống Sẵn sàng cao, không bị sập).
-  - **VPC Endpoint:** ~$1.20 (Vẫn rẻ hơn rất nhiều so với việc dùng NAT Gateway ~$2.16/48h).
-  - **Bedrock Nova Lite 2:** ~$0.60 (Tiết kiệm 80% token nhờ kiến trúc kết hợp Rule-based lọc trước).
+- **Chi phí thực tế 48H (từ Cost Explorer):** ~$5.60 — đạt mức **tối ưu chi phí**, chỉ bằng 5.6% ngân sách tối đa.
+- **Top 3 Cost Drivers (Group by Tag):**
+  - **Hạ tầng mạng (`hackathon-vpc`):** ~$1.35 (Chi phí VPC, Subnet, Network Interface — cố định bất kể traffic).
+  - **VPC Interface Endpoints (`vpce-bedrock`, `hackathon-vpce-bedrock`, `budgetbot-secrets-endpoint`):** ~$0.54 tổng (3 endpoints × ~$0.18). Rẻ hơn đáng kể so với việc dùng NAT Gateway ~$2.16/48h.
+  - **RDS Multi-AZ:** ~$3.80 (Chi phí lớn nhất — đây là sự đánh đổi có chủ đích: chấp nhận trả thêm để đảm bảo High Availability cho dữ liệu tài chính).
+- **Ghi chú:** AWS Learner Lab Credit đã được áp dụng, giá trị offset hiển thị trong mục "No tag key: Name" trên Cost Explorer.
 
 ### 6.2 Bằng chứng AWS Cost Explorer
 ![AWS Cost Explorer](./image/evidence-cost-explorer.png)
@@ -210,10 +227,6 @@ Nhóm đã ghi lại toàn bộ hệ thống cảnh báo và biểu đồ giám 
 
 ---
 
-## 9. Bài học rút ra (Lessons Learned)
 
-1. **Khó khăn với Dependency:** Cài PyPDF vào Lambda gặp giới hạn 250MB. Giải quyết bằng Docker Image tốn thời gian nhưng tùy biến tuyệt đối.
-2. **Lỗ hổng Connection Pool:** Scale Lambda làm bùng nổ RDS Connection. Giải quyết triệt để bằng SQS Buffer làm hàng đợi tĩnh.
-3. **Tư duy Event-Driven:** Chuyển từ API đồng bộ sang luồng Bất đồng bộ (Upload S3 -> Gọi API /enqueue -> SQS -> Lambda Worker) là bước ngoặt mở ra khả năng chịu tải vô cực.
 
 
