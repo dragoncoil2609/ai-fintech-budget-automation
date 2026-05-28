@@ -184,35 +184,48 @@ def handle_enqueue(
     sqs_queue_url: str,
     userstore,
 ) -> dict:
-    """Gửi message vào SQS để xử lý file bất đồng bộ.
-    Trả về job_id ngay lập tức — frontend không cần chờ Bedrock/RDS.
-    """
     import boto3
+    import traceback
+
     job_id = str(uuid.uuid4())
 
-    # Lưu job vào DB với status QUEUED
-    userstore.create_job(job_id=job_id, user_id=user_id, s3_key=s3_key, filename=filename)
-
-    # Gửi message vào SQS
-    sqs = boto3.client("sqs", region_name="us-west-2")
-    message = {
+    print("ENQUEUE_START", {
         "job_id": job_id,
         "user_id": user_id,
         "s3_key": s3_key,
         "filename": filename,
-    }
-    sqs.send_message(
-        QueueUrl=sqs_queue_url,
-        MessageBody=json.dumps(message),
-    )
+        "sqs_queue_url": sqs_queue_url,
+    })
 
-    logger.info({"event": "job_enqueued", "job_id": job_id, "s3_key": s3_key})
+    try:
+        print("CREATE_JOB_START")
+        userstore.create_job(job_id=job_id, user_id=user_id, s3_key=s3_key, filename=filename)
+        print("CREATE_JOB_OK")
 
-    return {
-        "job_id": job_id,
-        "status": "QUEUED",
-        "message": "File đã được đưa vào hàng đợi xử lý",
-    }
+        print("SQS_SEND_START")
+        sqs = boto3.client("sqs", region_name="us-west-2")
+        message = {
+            "job_id": job_id,
+            "user_id": user_id,
+            "s3_key": s3_key,
+            "filename": filename,
+        }
+        sqs.send_message(
+            QueueUrl=sqs_queue_url,
+            MessageBody=json.dumps(message),
+        )
+        print("SQS_SEND_OK")
+
+        return {
+            "job_id": job_id,
+            "status": "QUEUED",
+            "message": "File đã được đưa vào hàng đợi xử lý",
+        }
+
+    except Exception as exc:
+        print("ENQUEUE_ERROR:", repr(exc))
+        traceback.print_exc()
+        raise
 
 
 def handle_job_status(job_id: str, userstore) -> dict:
