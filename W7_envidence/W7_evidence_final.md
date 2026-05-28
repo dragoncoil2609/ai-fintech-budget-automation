@@ -125,6 +125,8 @@ Dưới đây là chi tiết luồng hoạt động kỹ thuật và các quyế
   - **Buffer giảm tải (Anti-Spike):** SQS làm hàng đợi trung gian (buffer). Dù 1000 user upload file cùng lúc, SQS sẽ từ từ "nhỏ giọt" message xuống Lambda Worker. 
   - **Chịu tải vô cực:** DB RDS không bị bùng nổ kết nối (Connection Spike), API không bao giờ timeout. Đảm bảo trải nghiệm êm mượt mà không phải scale phần cứng tốn tiền.
 
+![Bằng chứng SQS Queues](./image/evidence-sqs-queues.png)
+
 ### 4.2 Lựa chọn DB: RDS PostgreSQL vs. DynamoDB
 - **Lý do:** BudgetBot cần Query phân tích phức tạp. DynamoDB tuy không có cold-start nhưng giới hạn về query phân tích. Nhóm triển khai **Multi-AZ trên chip ARM t4g.micro** để đạt chuẩn High Availability trong khi vẫn tối ưu triệt để chi phí. Chấp nhận trả thêm phí duy trì RDS đổi lại năng lực thống kê báo cáo mạnh mẽ.
 
@@ -145,6 +147,7 @@ Dưới đây là chi tiết luồng hoạt động kỹ thuật và các quyế
 2.  **[C] Custom Domain + HTTPS (Giao diện chuyên nghiệp):**
     *   **Bước thực hiện:** Đăng ký tên miền `xbrain26hackathon269.software` trên Route 53. Xin chứng chỉ miễn phí AWS ACM và gắn vào CloudFront.
     *   **Tác dụng:** Ứng dụng live với tên miền chuyên nghiệp, có ổ khóa xanh HTTPS đảm bảo an toàn.
+    *   ![Bằng chứng ACM Certificate](./image/evidence-acm.png)
 3.  **[G] Cost Optimization (Tối ưu hóa và giám sát chi phí):**
     *   **Bước thực hiện:** (1) Dùng mô hình Amazon Nova Lite 2 thay vì các mô hình đắt tiền. (2) SQS bất đồng bộ chống nâng memory Lambda. (3) Dùng VPC Endpoint thay NAT. (4) Cấu hình Cost Anomaly Detection (ngưỡng >$10).
     *   **Tác dụng:** Chi phí thấp kỷ lục, không sợ hóa đơn đột biến.
