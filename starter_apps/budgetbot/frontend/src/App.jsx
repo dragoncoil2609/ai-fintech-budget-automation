@@ -478,8 +478,9 @@ export default function App() {
     setUploading(true)
     setAlert(null)
 
+    // ─── Hàm lõi dùng cho file đơn (nhỏ < 1200 dòng hoặc local fallback) ───
+    // Upload → SQS → Poll tuần tự, trả về data sau khi AI xong
     const processSingleFile = async (file) => {
-      // Bước 1: Xin presigned URL từ backend
       const reqRes = await authFetch(`${API_BASE}/upload-request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -492,24 +493,19 @@ export default function App() {
       const { upload_url, s3_key, fallback_to_multipart } = await reqRes.json()
 
       let data
-
       if (fallback_to_multipart || !upload_url) {
-        // Fallback: local dev — file vẫn đi qua /upload như cũ
         const form = new FormData()
         form.append('file', file)
         const res = await authFetch(`${API_BASE}/upload`, { method: 'POST', body: form })
         data = await res.json()
         if (!res.ok) throw new Error(data.detail || 'Upload thất bại')
       } else {
-        // Bước 2: PUT file trực tiếp lên S3 (không qua Lambda)
         const putRes = await fetch(upload_url, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/octet-stream' },
           body: file,
         })
         if (!putRes.ok) throw new Error(`Upload lên S3 thất bại (HTTP ${putRes.status})`)
-
-        // Bước 3: Enqueue job vào SQS
         const enqueueRes = await authFetch(`${API_BASE}/enqueue`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -517,39 +513,104 @@ export default function App() {
         })
         const enqueueData = await enqueueRes.json()
         if (!enqueueRes.ok) throw new Error(enqueueData.detail || 'Enqueue thất bại')
-
-        const { job_id } = enqueueData
-        setAlert({ type: 'warning', msg: `⏳ Đang xử lý file ${file.name}... (job: ${job_id.slice(0, 8)})` })
-
-        // Bước 4: Polling job status mỗi 2 giây
-        data = await pollJobStatus(job_id)
+        data = await pollJobStatus(enqueueData.job_id)
       }
       return data
     }
 
+    // ─── GIAI ĐOẠN 1: Chỉ Upload S3 + Đẩy SQS → trả về job_id NGAY ───
+    // KHÔNG chờ AI xử lý → hàm này hoàn thành trong vài giây
+    const enqueueSingleFile = async (file) => {
+      const reqRes = await authFetch(`${API_BASE}/upload-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name }),
+      })
+      if (!reqRes.ok) {
+        const err = await reqRes.json().catch(() => ({}))
+        throw new Error(err.detail || 'Không thể tạo upload request')
+      }
+      const { upload_url, s3_key, fallback_to_multipart } = await reqRes.json()
+
+      // Local fallback: xử lý đồng bộ rồi bọc lại cho nhất quán
+      if (fallback_to_multipart || !upload_url) {
+        const data = await processSingleFile(file)
+        return { job_id: null, fallback_data: data }
+      }
+
+      // PUT file thẳng lên S3 — không đi qua Lambda
+      const putRes = await fetch(upload_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: file,
+      })
+      if (!putRes.ok) throw new Error(`Upload lên S3 thất bại (HTTP ${putRes.status})`)
+
+      // Đẩy vào hàng đợi SQS → nhận job_id ngay lập tức
+      const enqueueRes = await authFetch(`${API_BASE}/enqueue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ s3_key, filename: file.name, mapping }),
+      })
+      const enqueueData = await enqueueRes.json()
+      if (!enqueueRes.ok) throw new Error(enqueueData.detail || 'Enqueue thất bại')
+
+      // Chỉ trả job_id, chưa poll → tách hoàn toàn upload ra khỏi AI
+      return { job_id: enqueueData.job_id, fallback_data: null }
+    }
+
     try {
       const fileArr = Array.isArray(fileInput) ? fileInput : [fileInput]
-      let totalInserted = 0
-      let totalFallback = 0
 
-      for (let i = 0; i < fileArr.length; i++) {
-        if (fileArr.length > 1) {
-          setAlert({ type: 'warning', msg: `Đang tải lên phần ${i + 1}/${fileArr.length}...` })
+      if (fileArr.length > 1) {
+        // ═══════════════════════════════════════════════════════════════════
+        // LUỒNG SONG SONG 2 GIAI ĐOẠN (file lớn đã được cắt thành nhiều chunk)
+        //
+        // GIAI ĐOẠN 1 — Upload song song (~5-10 giây dù có 20 chunk):
+        //   Promise.all: tất cả chunk bay lên S3 + vào hàng đợi SQS cùng lúc.
+        //   Lúc này Bedrock CHƯA chạy → upload không bị nghẽn bởi AI.
+        //
+        // GIAI ĐOẠN 2 — AI xử lý song song (bằng thời gian xử lý 1 chunk):
+        //   SQS tự phân phối job cho nhiều Lambda Worker đồng thời.
+        //   Frontend dùng Promise.all poll toàn bộ job_id cùng lúc → chờ 1 lần.
+        // ═══════════════════════════════════════════════════════════════════
+
+        // GIAI ĐOẠN 1: Upload + Enqueue tất cả song song
+        setAlert({ type: 'warning', msg: `⬆️ Đang tải lên ${fileArr.length} phần song song lên S3...` })
+        const enqueueResults = await Promise.all(fileArr.map(f => enqueueSingleFile(f)))
+
+        // GIAI ĐOẠN 2: Poll song song — Lambda + Bedrock chạy đồng thời
+        setAlert({ type: 'warning', msg: `🤖 AI đang phân loại song song ${fileArr.length} phần... Vui lòng chờ.` })
+        const jobResults = await Promise.all(
+          enqueueResults.map(r =>
+            r.job_id ? pollJobStatus(r.job_id) : Promise.resolve(r.fallback_data)
+          )
+        )
+
+        // Gộp kết quả
+        let totalInserted = 0, totalFallback = 0
+        for (const data of jobResults) {
+          totalInserted += data?.rows_inserted || 0
+          totalFallback += (data?.sample_categorized || [])
+            .filter(t => t.confidence === 'low-fallback').length
         }
-        const data = await processSingleFile(fileArr[i])
-        totalInserted += data.rows_inserted || 0
-        
-        const fallbackCount = (data.sample_categorized || []).filter(
-          t => t.confidence === 'low-fallback'
-        ).length
-        totalFallback += fallbackCount
+        let msg = `✅ Hoàn tất! Đã xử lý ${totalInserted} giao dịch từ ${fileArr.length} phần song song.`
+        if (totalFallback > 0) msg += ` (${totalFallback} giao dịch dùng phân loại dự phòng)`
+        setAlert({ type: 'success', msg })
+
+      } else {
+        // ────────────────────────────────────────────────
+        // LUỒNG ĐƠN: file nhỏ < 1200 dòng, xử lý như cũ
+        // ────────────────────────────────────────────────
+        setAlert({ type: 'warning', msg: `⏳ Đang xử lý file...` })
+        const data = await processSingleFile(fileArr[0])
+        const fallbackCount = (data.sample_categorized || [])
+          .filter(t => t.confidence === 'low-fallback').length
+        let msg = `✅ Tải lên thành công! Đã xử lý ${data.rows_inserted} giao dịch.`
+        if (fallbackCount > 0) msg += ` (${fallbackCount} giao dịch dùng phân loại dự phòng)`
+        setAlert({ type: 'success', msg })
       }
 
-      let msg = `✅ Tải lên thành công! Đã xử lý tổng cộng ${totalInserted} giao dịch.`
-      if (totalFallback > 0) {
-        msg += ` (${totalFallback} giao dịch dùng phân loại dự phòng)`
-      }
-      setAlert({ type: 'success', msg })
       await fetchData(month)
     } catch (e) {
       setAlert({ type: 'error', msg: e.message || 'Lỗi khi upload file' })
