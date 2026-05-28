@@ -5,7 +5,7 @@ import json
 import uuid
 import logging
 from typing import Optional
-
+from .metrics import put_metric
 logger = logging.getLogger(__name__)
 
 
@@ -98,12 +98,23 @@ def _categorize_and_save(
     location: str,
     ai_client,
     userstore,
+    route: str = "/process",
 ) -> dict:
-    """Parse CSV/PDF → categorize mỗi row bằng AI → lưu vào userstore. Dùng chung cho cả upload trực tiếp và xử lý từ S3."""
+    """Parse CSV/PDF → categorize mỗi row bằng AI → lưu vào userstore.
+    Dùng chung cho cả upload trực tiếp, xử lý từ S3 và SQS worker.
+    """
     if filename.lower().endswith(".pdf"):
         rows = _parse_pdf(data)
     else:
         rows = _parse_csv(data)
+
+    put_metric(
+        "RowsParsed",
+        len(rows),
+        "Count",
+        route=route,
+        user_id=user_id,
+    )
 
     all_past = userstore.list_transactions(user_id)
     past_transactions = [t for t in all_past if t.get("confidence") == "high"]
@@ -112,7 +123,10 @@ def _categorize_and_save(
 
     def process_row(row):
         cat_result = ai_client.categorize(
-            description=row["description"], amount=row["amount"], date=row["date"], past_transactions=past_transactions
+            description=row["description"],
+            amount=row["amount"],
+            date=row["date"],
+            past_transactions=past_transactions,
         )
         return {
             "date": row["date"],
@@ -125,16 +139,24 @@ def _categorize_and_save(
     inserted = 0
     samples = []
 
-    # Gọi AI song song cho tất cả các dòng (tối đa 20 luồng cùng lúc)
+    # Gọi AI song song cho tất cả các dòng, tối đa 20 luồng cùng lúc.
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
         categorized_txns = list(executor.map(process_row, rows))
 
-    # Lưu vào database tuần tự để tránh lỗi quá tải hoặc xung đột connection (psycopg2 không thread-safe)
+    # Lưu vào database tuần tự để tránh lỗi connection/thread-safety.
     for txn in categorized_txns:
         userstore.add_transaction(user_id, txn)
         inserted += 1
         if len(samples) < 5:
             samples.append(txn)
+
+    put_metric(
+        "RowsInserted",
+        inserted,
+        "Count",
+        route=route,
+        user_id=user_id,
+    )
 
     return {
         "filename": filename,
@@ -143,7 +165,6 @@ def _categorize_and_save(
         "rows_inserted": inserted,
         "sample_categorized": samples,
     }
-
 
 def handle_upload(
     user_id: str,
@@ -154,12 +175,49 @@ def handle_upload(
     userstore,
 ) -> dict:
     """Parse CSV/PDF → categorize each row via AI → persist to userstore.
-    Đây là luồng upload cũ (file đi qua Lambda). Giữ nguyên để tương thích local dev và fallback.
+    Đây là luồng upload cũ file đi qua Lambda.
     """
-    key = f"{user_id}/{filename}"
-    location = storage.put(key, data)
-    return _categorize_and_save(user_id, filename, data, location, ai_client, userstore)
+    try:
+        put_metric(
+            "UploadJobCreated",
+            1,
+            "Count",
+            route="/upload",
+            user_id=user_id,
+        )
 
+        key = f"{user_id}/{filename}"
+        location = storage.put(key, data)
+
+        result = _categorize_and_save(
+            user_id=user_id,
+            filename=filename,
+            data=data,
+            location=location,
+            ai_client=ai_client,
+            userstore=userstore,
+            route="/upload",
+        )
+
+        put_metric(
+            "UploadJobSucceeded",
+            1,
+            "Count",
+            route="/upload",
+            user_id=user_id,
+        )
+
+        return result
+
+    except Exception:
+        put_metric(
+            "UploadJobFailed",
+            1,
+            "Count",
+            route="/upload",
+            user_id=user_id,
+        )
+        raise
 
 def handle_process_from_s3(
     user_id: str,
@@ -170,12 +228,49 @@ def handle_process_from_s3(
     userstore,
 ) -> dict:
     """Đọc file đã upload lên S3 bằng presigned URL → categorize → lưu vào userstore.
-    Đây là bước 3 của luồng Presigned URL: Lambda không nhận payload file, chỉ nhận s3_key.
+    Đây là bước xử lý đồng bộ sau presigned upload.
     """
-    data = storage.get(s3_key)
-    location = f"s3://{s3_key}"
-    return _categorize_and_save(user_id, filename, data, location, ai_client, userstore)
+    try:
+        put_metric(
+            "ProcessJobStarted",
+            1,
+            "Count",
+            route="/process",
+            user_id=user_id,
+        )
 
+        data = storage.get(s3_key)
+        location = f"s3://{s3_key}"
+
+        result = _categorize_and_save(
+            user_id=user_id,
+            filename=filename,
+            data=data,
+            location=location,
+            ai_client=ai_client,
+            userstore=userstore,
+            route="/process",
+        )
+
+        put_metric(
+            "UploadJobSucceeded",
+            1,
+            "Count",
+            route="/process",
+            user_id=user_id,
+        )
+
+        return result
+
+    except Exception:
+        put_metric(
+            "UploadJobFailed",
+            1,
+            "Count",
+            route="/process",
+            user_id=user_id,
+        )
+        raise
 
 def handle_enqueue(
     user_id: str,
@@ -202,6 +297,14 @@ def handle_enqueue(
         userstore.create_job(job_id=job_id, user_id=user_id, s3_key=s3_key, filename=filename)
         print("CREATE_JOB_OK")
 
+        put_metric(
+            "UploadJobCreated",
+            1,
+            "Count",
+            route="/enqueue",
+            user_id=user_id,
+        )
+
         print("SQS_SEND_START")
         sqs = boto3.client("sqs")
         message = {
@@ -216,6 +319,14 @@ def handle_enqueue(
         )
         print("SQS_SEND_OK", resp)
 
+        put_metric(
+            "SQSMessageSent",
+            1,
+            "Count",
+            route="/enqueue",
+            user_id=user_id,
+        )
+
         return {
             "job_id": job_id,
             "status": "QUEUED",
@@ -223,6 +334,13 @@ def handle_enqueue(
         }
 
     except Exception as exc:
+        put_metric(
+            "UploadJobFailed",
+            1,
+            "Count",
+            route="/enqueue",
+            user_id=user_id,
+        )
         print("ENQUEUE_ERROR:", repr(exc))
         traceback.print_exc()
         raise
@@ -241,7 +359,10 @@ def handle_sqs_event(event: dict, storage, ai_client, userstore) -> dict:
     Đọc file từ S3, parse CSV/PDF, gọi Bedrock, lưu RDS, cập nhật job status.
     """
     results = []
+
     for record in event.get("Records", []):
+        message = {}
+
         try:
             message = json.loads(record["body"])
             job_id = message["job_id"]
@@ -251,27 +372,77 @@ def handle_sqs_event(event: dict, storage, ai_client, userstore) -> dict:
 
             logger.info({"event": "sqs_job_start", "job_id": job_id, "s3_key": s3_key})
 
-            # Cập nhật status → PROCESSING
+            put_metric(
+                "SQSMessageReceived",
+                1,
+                "Count",
+                route="sqs_worker",
+                user_id=user_id,
+            )
+
             userstore.update_job_status(job_id, "PROCESSING")
 
-            # Xử lý file
             data = storage.get(s3_key)
             location = f"s3://{s3_key}"
-            result = _categorize_and_save(user_id, filename, data, location, ai_client, userstore)
 
-            # Cập nhật status → COMPLETED
+            result = _categorize_and_save(
+                user_id=user_id,
+                filename=filename,
+                data=data,
+                location=location,
+                ai_client=ai_client,
+                userstore=userstore,
+                route="sqs_worker",
+            )
+
             userstore.update_job_status(job_id, "COMPLETED", rows_inserted=result["rows_inserted"])
+
+            put_metric(
+                "SQSMessageProcessed",
+                1,
+                "Count",
+                route="sqs_worker",
+                user_id=user_id,
+            )
+
+            put_metric(
+                "UploadJobSucceeded",
+                1,
+                "Count",
+                route="sqs_worker",
+                user_id=user_id,
+            )
 
             logger.info({"event": "sqs_job_done", "job_id": job_id, "rows": result["rows_inserted"]})
             results.append({"job_id": job_id, "status": "COMPLETED"})
 
         except Exception as exc:
-            job_id = message.get("job_id", "unknown") if "message" in dir() else "unknown"
+            job_id = message.get("job_id", "unknown")
+            user_id = message.get("user_id", "unknown")
+
+            put_metric(
+                "SQSMessageFailed",
+                1,
+                "Count",
+                route="sqs_worker",
+                user_id=user_id,
+            )
+
+            put_metric(
+                "UploadJobFailed",
+                1,
+                "Count",
+                route="sqs_worker",
+                user_id=user_id,
+            )
+
             logger.exception({"event": "sqs_job_failed", "job_id": job_id, "error": str(exc)})
+
             try:
                 userstore.update_job_status(job_id, "FAILED", error=str(exc))
             except Exception:
                 pass
+
             raise  # Re-raise để SQS retry
 
     return {"processed": len(results)}

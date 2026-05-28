@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from .config import config
 from .adapters import factory
 from . import handlers
-
+from .metrics import put_metric
 # Import Mangum to wrap FastAPI for AWS Lambda
 try:
     from mangum import Mangum  # type: ignore
@@ -110,21 +110,39 @@ def upload_request(
     """
     user_id = _resolve_user_id(x_user_id)
     filename = body.filename or "statement.csv"
-    s3_key = f"uploads/{user_id}/{uuid.uuid4()}/{filename}"
-    expiry = config.s3_presign_expiry
 
-    upload_url = storage.generate_presigned_put(key=s3_key, expiry=expiry)
+    try:
+        s3_key = f"uploads/{user_id}/{uuid.uuid4()}/{filename}"
+        expiry = config.s3_presign_expiry
 
-    return {
-        "upload_url": upload_url,          # None nếu local storage
-        "s3_key": s3_key,
-        "expires_in": expiry,
-        "method": "PUT",
-        "content_type": "application/octet-stream",
-        # Gợi ý cho frontend: nếu upload_url là null thì dùng /upload thay thế
-        "fallback_to_multipart": upload_url is None,
-    }
+        upload_url = storage.generate_presigned_put(key=s3_key, expiry=expiry)
 
+        put_metric(
+            "PresignedUrlGenerated",
+            1,
+            "Count",
+            route="/upload-request",
+            user_id=user_id,
+        )
+
+        return {
+            "upload_url": upload_url,
+            "s3_key": s3_key,
+            "expires_in": expiry,
+            "method": "PUT",
+            "content_type": "application/octet-stream",
+            "fallback_to_multipart": upload_url is None,
+        }
+
+    except Exception:
+        put_metric(
+            "PresignedUrlFailed",
+            1,
+            "Count",
+            route="/upload-request",
+            user_id=user_id,
+        )
+        raise
 
 class ProcessBody(BaseModel):
     s3_key: str
@@ -142,6 +160,7 @@ def process(
     Lambda không nhận payload file — chỉ nhận s3_key (chuỗi nhỏ).
     """
     user_id = _resolve_user_id(x_user_id)
+
     if not body.s3_key:
         raise HTTPException(status_code=400, detail="s3_key is required")
     if not body.filename:
@@ -157,8 +176,9 @@ def process(
             userstore=userstore,
         )
     except Exception as exc:
+        # handle_process_from_s3 cũng đã emit UploadJobFailed.
+        # Ở đây chỉ chuyển lỗi thành HTTP 500 cho frontend.
         raise HTTPException(status_code=500, detail=f"Lỗi xử lý file từ S3: {exc}") from exc
-
 
 class EnqueueBody(BaseModel):
     s3_key: str
@@ -175,6 +195,7 @@ def enqueue(
     gửi message vào SQS và trả về job_id ngay. Không cần chờ xử lý AI/RDS.
     """
     user_id = _resolve_user_id(x_user_id)
+
     if not body.s3_key:
         raise HTTPException(status_code=400, detail="s3_key is required")
     if not body.filename:
@@ -191,8 +212,14 @@ def enqueue(
             userstore=userstore,
         )
     except Exception as exc:
+        put_metric(
+            "UploadJobFailed",
+            1,
+            "Count",
+            route="/enqueue",
+            user_id=user_id,
+        )
         raise HTTPException(status_code=500, detail=f"Lỗi enqueue: {exc}") from exc
-
 
 @app.get("/job-status/{job_id}")
 def job_status(

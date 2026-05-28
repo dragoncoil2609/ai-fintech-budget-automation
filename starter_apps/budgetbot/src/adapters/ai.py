@@ -5,8 +5,9 @@ Interface:
 """
 import json
 import re
+import time
 from typing import Any
-
+from ..metrics import put_metric
 
 CATEGORIES = [
     "Food", "Transport", "Shopping", "Utilities", "Entertainment",
@@ -121,6 +122,16 @@ class BedrockAI:
             if len(parts) == 2:
                 prompt = parts[0] + dynamic_examples + "Now categorize this transaction:" + parts[1]
 
+                
+        start = time.time()
+
+        put_metric(
+            "BedrockCalls",
+            1,
+            "Count",
+            route="categorize",
+        )
+
         try:
             # Chờ phản hồi tối đa từ Bedrock, nếu quá tải hoặc lỗi sẽ kích hoạt fallback
             resp = self.runtime.converse(
@@ -128,13 +139,30 @@ class BedrockAI:
                 messages=[{"role": "user", "content": [{"text": prompt}]}],
                 inferenceConfig={"maxTokens": 100, "temperature": 0.0},
             )
+
+            latency_ms = int((time.time() - start) * 1000)
+            put_metric(
+                "BedrockLatencyMs",
+                latency_ms,
+                "Milliseconds",
+                route="categorize",
+            )
+
             text = resp["output"]["message"]["content"][0]["text"]
             return _parse_json_response(text)
+
         except Exception as e:
+            put_metric(
+                "BedrockFailures",
+                1,
+                "Count",
+                route="categorize",
+            )
+
             # --- BƯỚC 3: GRACEFUL FALLBACK NẾU BEDROCK BỊ TIMEOUT / LỖI ---
             import sys
             print(f"WARNING: Bedrock error triggered fallback to LocalAI: {e}", file=sys.stderr)
-            
+
             # Dự phòng xuống LocalAI (Rule-based)
             local_ai = LocalAI()
             fallback_res = local_ai.categorize(description, amount, date)
