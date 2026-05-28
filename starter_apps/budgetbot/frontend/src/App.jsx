@@ -444,8 +444,15 @@ export default function App() {
       const reader = new FileReader()
       reader.onload = (e) => {
         const text = e.target.result
-        const rows = text.split('\n').map(r => r.split(',')).slice(0, 5)
-        setCsvPreviewData(rows)
+        const allRows = text.split('\n').filter(r => r.trim().length > 0)
+        
+        if (allRows.length > 1000) {
+          setAlert({ type: 'error', msg: `File quá lớn (${allRows.length} dòng). Vui lòng chia nhỏ file (tối đa 1000 dòng/file) để AI xử lý mượt mà nhất.` })
+          return
+        }
+
+        const previewRows = allRows.slice(0, 5).map(r => r.split(','))
+        setCsvPreviewData(previewRows)
         setPendingFile(file)
       }
       reader.readAsText(file)
