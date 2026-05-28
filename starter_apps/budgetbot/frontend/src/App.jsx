@@ -784,19 +784,29 @@ export default function App() {
             <div className="panel-header">
               <span className="panel-title">📈 Xu hướng chi tiêu</span>
             </div>
-            <div className="panel-body" style={{ height: 300 }}>
+            <div className="panel-body" style={{ height: 350, minHeight: 350, width: '100%' }}>
               {loading ? (
                 <div className="empty-state">
                   <span className="spinner" style={{ width: 32, height: 32, borderWidth: 3 }} />
                 </div>
               ) : summary?.daily_trends?.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={summary.daily_trends}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="date" tick={{fontSize: 12}} />
-                    <YAxis tickFormatter={(val) => fmtVND(val)} width={60} tick={{fontSize: 12}} />
-                    <Tooltip formatter={(value) => [fmtFull(value), 'Chi tiêu']} labelStyle={{color: '#333'}} />
-                    <Bar dataKey="amount" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                  <BarChart data={summary.daily_trends} margin={{ top: 20, right: 20, left: 0, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.1)" />
+                    <XAxis dataKey="date" tick={{fontSize: 12, fill: '#94a3b8'}} stroke="rgba(255,255,255,0.2)" />
+                    <YAxis tickFormatter={(val) => fmtVND(val)} width={60} tick={{fontSize: 12, fill: '#94a3b8'}} stroke="rgba(255,255,255,0.2)" />
+                    <Tooltip 
+                      formatter={(value) => [fmtFull(value), 'Chi tiêu']} 
+                      labelStyle={{color: '#333'}} 
+                      contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.2)'}} 
+                    />
+                    <Bar dataKey="amount" fill="url(#colorUv)" radius={[6, 6, 0, 0]} />
+                    <defs>
+                      <linearGradient id="colorUv" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#ec4899" stopOpacity={0.9}/>
+                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.9}/>
+                      </linearGradient>
+                    </defs>
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
