@@ -446,12 +446,12 @@ export default function App() {
         const text = e.target.result
         const allRows = text.split('\n').filter(r => r.trim().length > 0)
         
-        if (allRows.length > 1000) {
-          setAlert({ type: 'error', msg: `File quá lớn (${allRows.length} dòng). Vui lòng chia nhỏ file (tối đa 1000 dòng/file) để AI xử lý mượt mà nhất.` })
+        if (allRows.length > 1200) {
+          setAlert({ type: 'error', msg: `File quá lớn (${allRows.length} dòng). Vui lòng chia nhỏ file (tối đa 1200 dòng/file) để AI xử lý mượt mà nhất.` })
           return
         }
 
-        // Theo yêu cầu mới: Dưới 1000 dòng up thẳng lên luôn không cần chờ Preview
+        // Theo yêu cầu mới: Dưới 1200 dòng up thẳng lên luôn không cần chờ Preview
         handleUpload(file, null)
       }
       reader.readAsText(file)
@@ -801,10 +801,11 @@ export default function App() {
                     <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={summary.daily_trends} margin={{ top: 20, right: 20, left: 0, bottom: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.1)" />
-                    <XAxis dataKey="date" tick={{fontSize: 12, fill: '#94a3b8'}} stroke="rgba(255,255,255,0.2)" />
+                    <XAxis dataKey="date" tickFormatter={(val) => val && val.split('-').length === 3 ? `${val.split('-')[2]}/${val.split('-')[1]}` : val} tick={{fontSize: 12, fill: '#94a3b8'}} stroke="rgba(255,255,255,0.2)" />
                     <YAxis tickFormatter={(val) => fmtVND(val)} width={60} tick={{fontSize: 12, fill: '#94a3b8'}} stroke="rgba(255,255,255,0.2)" />
                     <Tooltip 
                       formatter={(value) => [fmtFull(value), 'Chi tiêu']} 
+                      labelFormatter={(label) => label && label.split('-').length === 3 ? `${label.split('-')[2]}/${label.split('-')[1]}/${label.split('-')[0]}` : label}
                       labelStyle={{color: '#333'}} 
                       contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.2)'}} 
                     />
@@ -879,7 +880,11 @@ export default function App() {
                   <tbody>
                     {transactions.map((txn) => (
                       <tr key={txn.id}>
-                        <td className="tx-date">{txn.date}</td>
+                        <td className="tx-date">
+                          {txn.date && txn.date.split('-').length === 3 
+                            ? `${txn.date.split('-')[2]}/${txn.date.split('-')[1]}/${txn.date.split('-')[0]}` 
+                            : txn.date}
+                        </td>
                         <td>
                           <span className="tx-desc" title={txn.description}>
                             {txn.description}
