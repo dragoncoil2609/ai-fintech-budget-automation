@@ -137,27 +137,6 @@ Dưới đây là chi tiết luồng hoạt động kỹ thuật và các quyế
   - **Cognito JWT Authorizer (gắn tại API Gateway):** Từ chối ngay lập tức các request mạo danh, không có token hợp lệ.
   - **Kết quả:** Thay vì để Request rác lọt vào trong đánh thức Lambda (gây tốn tiền Compute vô ích), kiến trúc này tiêu diệt hiểm họa từ vòng gửi xe. **Tiết kiệm 100% chi phí xử lý request rác!**
 
-### 4.4 Xử lý File Siêu Lớn: Client-side Chunking + Song song 2 giai đoạn
-
-- **Vấn đề:** Người dùng thực tế có thể tải lên file sao kê cả năm với 20.000+ dòng. Một giới hạn cứng phía Frontend sẽ gây ra trải nghiệm tồi. Đồng thời, luồng xử lý tuần tự (upload chunk 1 → chờ AI xong → upload chunk 2 → ...) có thể mất tới **40 phút** cho file 20.000 dòng.
-
-- **Quyết định kiến trúc: Tách Upload ra khỏi AI Processing thành 2 giai đoạn song song.**
-
-- **Cơ chế hoạt động (Frontend — không cần thay đổi Backend):**
-  - **Giai đoạn 0 — Cắt nhỏ (Client-side):** `FileReader` đọc toàn bộ file CSV vào RAM trình duyệt. Nếu vượt 1200 dòng, Frontend tự cắt thành các chunk 1000 dòng, tái sử dụng dòng tiêu đề (Header) cho từng chunk. Tạo ra các đối tượng `File` ảo ngay trên RAM.
-  - **Giai đoạn 1 — Upload Song song (`Promise.all`):** Tất cả chunk **cùng lúc** bay lên S3 qua Presigned URL và được đẩy vào hàng đợi SQS. Giai đoạn này hoàn thành trong ~5-10 giây bất kể có 5 hay 20 chunk. Tại thời điểm này, Bedrock **chưa hề được gọi**.
-  - **Giai đoạn 2 — AI Xử lý Song song:** SQS tự phân phối các job cho nhiều Lambda Worker chạy **đồng thời**. Mỗi Worker gọi Bedrock độc lập. Frontend dùng `Promise.all` để poll song song toàn bộ `job_id`, chờ kết quả chỉ **1 lần duy nhất**.
-
-- **Kết quả đo lường:**
-
-  | | Luồng tuần tự (cũ) | Luồng song song (mới) |
-  |---|---|---|
-  | File 20.000 dòng | ~40 phút chờ | ~2-3 phút |
-  | Chi phí AWS | X đồng | **X đồng (y hệt)** |
-  | Trải nghiệm người dùng | Chặn lỗi nếu > 1200 dòng | Chấp nhận file không giới hạn |
-
-  > **Nguyên tắc cốt lõi:** AWS tính tiền theo **lượng công việc** (số token, GB×giây), không phải tốc độ thực hiện. Xử lý song song hay tuần tự, chi phí là như nhau — nhưng tốc độ nhanh gấp 20 lần.
-
 ---
 
 ## 5. Các Bước Hoàn Thành Bonus (Điểm Cộng)
