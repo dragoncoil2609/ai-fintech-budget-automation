@@ -39,17 +39,31 @@ def put_metric(
     user_id: str | None = None,
 ) -> None:
     try:
-        _cloudwatch.put_metric_data(
-            Namespace=NAMESPACE,
-            MetricData=[
+        metric_data = [
+            {
+                "MetricName": name,
+                "Value": value,
+                "Unit": unit,
+                "Dimensions": _dimensions(route=route, user_id=user_id),
+            }
+        ]
+
+        # Emit thêm một metric tổng hợp không có UserId để dashboard/alarm không bị phụ thuộc từng user/job.
+        if user_id:
+            metric_data.append(
                 {
                     "MetricName": name,
                     "Value": value,
                     "Unit": unit,
-                    "Dimensions": _dimensions(route=route, user_id=user_id),
+                    "Dimensions": _dimensions(route=route, user_id=None),
                 }
-            ],
+            )
+
+        _cloudwatch.put_metric_data(
+            Namespace=NAMESPACE,
+            MetricData=metric_data,
         )
+
     except (BotoCoreError, ClientError, Exception) as exc:
         print(
             f"[CloudWatchMetricError] "
