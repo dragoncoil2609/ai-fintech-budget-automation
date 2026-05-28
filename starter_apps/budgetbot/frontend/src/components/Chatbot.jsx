@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
+import ReactMarkdown from 'react-markdown'
+
 export default function Chatbot({ authFetch, CATEGORY_VI }) {
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState([
@@ -80,12 +82,16 @@ export default function Chatbot({ authFetch, CATEGORY_VI }) {
             {messages.map((msg, idx) => (
               <div key={idx} className={`chat-message ${msg.role}`}>
                 <div className="chat-bubble">
-                  {msg.text.split('\n').map((line, i) => (
-                    <span key={i}>
-                      {line}
-                      <br />
-                    </span>
-                  ))}
+                  {msg.role === 'assistant' ? (
+                    <ReactMarkdown>{msg.text}</ReactMarkdown>
+                  ) : (
+                    msg.text.split('\n').map((line, i) => (
+                      <span key={i}>
+                        {line}
+                        <br />
+                      </span>
+                    ))
+                  )}
                 </div>
               </div>
             ))}

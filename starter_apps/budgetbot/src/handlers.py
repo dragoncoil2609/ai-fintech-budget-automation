@@ -452,12 +452,16 @@ def handle_sqs_event(event: dict, storage, ai_client, userstore) -> dict:
 def handle_summary(user_id: str, month: Optional[str], userstore) -> dict:
     summary = userstore.summary(user_id, month=month)
     total = sum(v["total"] for v in summary.values())
-    sorted_cats = sorted(summary.items(), key=lambda kv: -abs(kv[1]["total"]))
+    
+    # Filter out positive amounts for top drivers (only consider expenses)
+    expenses = {k: v for k, v in summary.items() if v["total"] < 0}
+    sorted_cats = sorted(expenses.items(), key=lambda kv: kv[1]["total"])
+    
     return {
         "user_id": user_id,
         "month": month,
         "total_spend": total,
-        "by_category": dict(sorted_cats),
+        "by_category": summary,
         "top_3_drivers": [
             {"category": cat, "total": v["total"], "count": v["count"]}
             for cat, v in sorted_cats[:3]
