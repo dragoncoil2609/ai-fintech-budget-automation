@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
+import './Chatbot.css'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
-
-import ReactMarkdown from 'react-markdown'
 
 export default function Chatbot({ authFetch, CATEGORY_VI }) {
   const [isOpen, setIsOpen] = useState(false)
@@ -74,7 +74,10 @@ export default function Chatbot({ authFetch, CATEGORY_VI }) {
       {isOpen && (
         <div className="chatbot-window">
           <div className="chatbot-header">
-            <span className="chatbot-title">✨ AI Money Coach</span>
+            <div className="chatbot-title">
+              <div className="chatbot-avatar">🤖</div>
+              AI Money Coach
+            </div>
             <button className="chatbot-close" onClick={() => setIsOpen(false)}>✕</button>
           </div>
           
@@ -113,7 +116,7 @@ export default function Chatbot({ authFetch, CATEGORY_VI }) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Hỏi về chi tiêu hoặc đặt ngân sách..."
+              placeholder="Hỏi về chi tiêu..."
               rows={1}
             />
             <button 
