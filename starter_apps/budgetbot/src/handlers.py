@@ -484,7 +484,8 @@ def handle_clear_transactions(user_id: str, userstore) -> dict:
 def handle_chat(user_id: str, message: str, userstore, chatbot_client) -> dict:
     transactions = userstore.list_transactions(user_id)
     budgets = userstore.get_budgets(user_id)
-    reply = chatbot_client.chat(user_id, message, transactions, budgets, userstore)
+    summary = userstore.summary(user_id)
+    reply = chatbot_client.chat(user_id, message, transactions, budgets, summary, userstore)
     return {"reply": reply}
 
 def handle_get_budgets(user_id: str, userstore) -> dict:

@@ -5,16 +5,19 @@ from typing import Any
 
 CHATBOT_SYSTEM_PROMPT = """You are an AI Money Coach.
 Your goal is to help the user understand their spending, provide budget recommendations, and set budget limits.
-You will be provided with the user's recent transactions and their current budget limits (caps).
+You will be provided with the user's recent transactions, their current budget limits (caps), and a pre-calculated summary of their exact total spending per category.
 
 Rules:
-1. When asked about spending, calculate the sum from the provided transactions and list the contributing items concisely.
+1. When asked about spending totals for a category, DO NOT calculate it yourself from the transactions list! Instead, look at the "Category Summary context" to get the exact total. Then, list the contributing items concisely from the Transactions list.
 2. When asked for budget recommendations, analyze their spending and suggest realistic limits.
 3. If the user asks to set a budget, use the 'set_budget' tool.
 4. Be friendly, professional, and concise.
 5. IMPORTANT: When mentioning categories, you MUST use the exact Vietnamese names corresponding to the data:
    Food -> "Ăn uống", Transport -> "Di chuyển", Shopping -> "Mua sắm", Utilities -> "Tiện ích", Entertainment -> "Giải trí", Health -> "Sức khỏe", Subscriptions -> "Đăng ký", Income -> "Thu nhập", Transfer -> "Chuyển khoản", Other -> "Khác".
 6. Format your response beautifully using Markdown (bolding important numbers, bullet points for lists, etc.).
+
+Category Summary context (Use this for EXACT math totals!):
+{summary}
 
 Transactions context:
 {transactions}
@@ -28,18 +31,23 @@ class ChatbotAI:
         self.runtime = boto3.client("bedrock-runtime", region_name=region)
         self.model_id = model_id
 
-    def chat(self, user_id: str, message: str, transactions: list, budgets: dict, userstore: Any) -> str:
+    def chat(self, user_id: str, message: str, transactions: list, budgets: dict, summary: dict, userstore: Any) -> str:
         # Format transactions
         txns_str = "\n".join([f"- {t['date']}: {t['description']} ({t['amount']}) [{t['category']}]" for t in transactions])
         if not txns_str:
             txns_str = "No transactions found."
             
+        # Format summary
+        summary_str = "\n".join([f"- {k}: Total={v['total']} VND (Count={v['count']})" for k, v in summary.items()])
+        if not summary_str:
+            summary_str = "No summary data found."
+
         # Format budgets
         budgets_str = "\n".join([f"- {k}: {v}" for k, v in budgets.items()])
         if not budgets_str:
             budgets_str = "No budgets set."
 
-        system_text = CHATBOT_SYSTEM_PROMPT.format(transactions=txns_str, budgets=budgets_str)
+        system_text = CHATBOT_SYSTEM_PROMPT.format(transactions=txns_str, budgets=budgets_str, summary=summary_str)
 
         # Define the set_budget tool
         tool_config = {
