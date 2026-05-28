@@ -89,7 +89,7 @@ class BedrockAI:
         self.runtime = boto3.client("bedrock-runtime", region_name=region)
         self.model_id = model_id
 
-    def categorize(self, description: str, amount: float, date: str) -> dict:
+    def categorize(self, description: str, amount: float, date: str, past_transactions: list = None) -> dict:
         # --- BƯỚC 1: HYBRID RULE-BASED (So khớp từ khóa nhanh offline) ---
         desc_lower = description.lower()
         for category, keywords in LocalAI.KEYWORDS.items():
@@ -105,6 +105,16 @@ class BedrockAI:
             amount=amount,
             date=date,
         )
+        
+        if past_transactions:
+            dynamic_examples = "\nUSER'S PAST PREFERENCES (LEARN FROM THESE):\n"
+            for t in past_transactions[:15]: # Use top 15 as examples
+                dynamic_examples += f'Transaction: "{t.get("description", "")}"\nAmount: {t.get("amount", "")}\nDate: {t.get("date", "")}\nOutput: {{"category": "{t.get("category", "")}", "confidence": "high"}}\n\n'
+            
+            parts = prompt.split("Now categorize this transaction:")
+            if len(parts) == 2:
+                prompt = parts[0] + dynamic_examples + "Now categorize this transaction:" + parts[1]
+
         try:
             # Chờ phản hồi tối đa từ Bedrock, nếu quá tải hoặc lỗi sẽ kích hoạt fallback
             resp = self.runtime.converse(
@@ -148,7 +158,7 @@ class LocalAI:
         "Health": ["pharmacy", "hospital", "clinic", "guardian", "long chau", "medlatec"],
     }
 
-    def categorize(self, description: str, amount: float, date: str) -> dict:
+    def categorize(self, description: str, amount: float, date: str, past_transactions: list = None) -> dict:
         desc_lower = description.lower()
         for category, keywords in self.KEYWORDS.items():
             for kw in keywords:

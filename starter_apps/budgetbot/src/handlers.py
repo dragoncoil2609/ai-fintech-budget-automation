@@ -102,11 +102,15 @@ def handle_upload(
         rows = _parse_pdf(data)
     else:
         rows = _parse_csv(data)
+        
+    all_past = userstore.list_transactions(user_id)
+    past_transactions = [t for t in all_past if t.get("confidence") == "high"]
+
     import concurrent.futures
 
     def process_row(row):
         cat_result = ai_client.categorize(
-            description=row["description"], amount=row["amount"], date=row["date"]
+            description=row["description"], amount=row["amount"], date=row["date"], past_transactions=past_transactions
         )
         return {
             "date": row["date"],
