@@ -22,8 +22,14 @@ Rules:
 2. If it is ambiguous (e.g., "VINMART HCM 04" could be Food or Shopping), pick the most likely one and set confidence to "medium".
 3. If it is clear (e.g., "NETFLIX"), set category and set confidence to "high".
 4. If amount is positive and it's not a refund, it might be "Income".
+5. If the description contains "REFUND", "Hoàn tiền", or "Reversal" and the amount is positive, DO NOT categorize as "Income". Set category to "Other" (or the original spending category) and confidence to "medium".
 
 Examples:
+Transaction: "AGODA REFUND"
+Amount: 2000000
+Date: 2026-04-06
+Output: {{"category": "Other", "confidence": "medium"}}
+
 Transaction: "T1908 GRAB CITY"
 Amount: -50000
 Date: 2026-04-05
