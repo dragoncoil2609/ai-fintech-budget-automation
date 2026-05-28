@@ -203,21 +203,18 @@ def handle_enqueue(
         print("CREATE_JOB_OK")
 
         print("SQS_SEND_START")
-
-
-
-    try:
+        sqs = boto3.client("sqs")
+        message = {
+            "job_id": job_id,
+            "user_id": user_id,
+            "s3_key": s3_key,
+            "filename": filename,
+        }
         resp = sqs.send_message(
             QueueUrl=sqs_queue_url,
             MessageBody=json.dumps(message),
         )
         print("SQS_SEND_OK", resp)
-
-    except Exception as e:
-        import traceback
-        print("SQS_SEND_ERROR =", repr(e))
-        traceback.print_exc()
-        raise
 
         return {
             "job_id": job_id,
