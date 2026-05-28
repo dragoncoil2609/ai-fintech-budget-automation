@@ -447,11 +447,24 @@ export default function App() {
         const allRows = text.split('\n').filter(r => r.trim().length > 0)
         
         if (allRows.length > 1200) {
-          setAlert({ type: 'error', msg: `File quá lớn (${allRows.length} dòng). Vui lòng chia nhỏ file (tối đa 1200 dòng/file) để AI xử lý mượt mà nhất.` })
+          const header = allRows[0]
+          const dataRows = allRows.slice(1)
+          const chunkSize = 1000
+          const totalChunks = Math.ceil(dataRows.length / chunkSize)
+          
+          const chunkFiles = []
+          for (let i = 0; i < totalChunks; i++) {
+            const chunkRows = [header, ...dataRows.slice(i * chunkSize, (i + 1) * chunkSize)]
+            const chunkText = chunkRows.join('\n')
+            const chunkName = file.name.replace('.csv', `_part${i + 1}.csv`)
+            chunkFiles.push(new File([chunkText], chunkName, { type: 'text/csv' }))
+          }
+          
+          handleUpload(chunkFiles, null)
           return
         }
 
-        // Theo yêu cầu mới: Dưới 1200 dòng up thẳng lên luôn không cần chờ Preview
+        // Dưới 1200 dòng up thẳng lên luôn không cần chờ Preview
         handleUpload(file, null)
       }
       reader.readAsText(file)
@@ -461,11 +474,11 @@ export default function App() {
   }
 
   /* --- Upload --- */
-  const handleUpload = async (file, mapping) => {
+  const handleUpload = async (fileInput, mapping) => {
     setUploading(true)
     setAlert(null)
 
-    try {
+    const processSingleFile = async (file) => {
       // Bước 1: Xin presigned URL từ backend
       const reqRes = await authFetch(`${API_BASE}/upload-request`, {
         method: 'POST',
@@ -496,7 +509,7 @@ export default function App() {
         })
         if (!putRes.ok) throw new Error(`Upload lên S3 thất bại (HTTP ${putRes.status})`)
 
-        // Bước 3: Enqueue job vào SQS — trả về job_id ngay, không chờ xử lý
+        // Bước 3: Enqueue job vào SQS
         const enqueueRes = await authFetch(`${API_BASE}/enqueue`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -506,18 +519,35 @@ export default function App() {
         if (!enqueueRes.ok) throw new Error(enqueueData.detail || 'Enqueue thất bại')
 
         const { job_id } = enqueueData
-        setAlert({ type: 'warning', msg: `⏳ Đang xử lý file... (job: ${job_id.slice(0, 8)})` })
+        setAlert({ type: 'warning', msg: `⏳ Đang xử lý file ${file.name}... (job: ${job_id.slice(0, 8)})` })
 
         // Bước 4: Polling job status mỗi 2 giây
         data = await pollJobStatus(job_id)
       }
+      return data
+    }
 
-      const fallbackCount = (data.sample_categorized || []).filter(
-        t => t.confidence === 'low-fallback'
-      ).length
-      let msg = `✅ Tải lên thành công! Đã xử lý ${data.rows_inserted} giao dịch từ "${data.filename}".`
-      if (fallbackCount > 0) {
-        msg += ` (${fallbackCount} giao dịch dùng phân loại dự phòng)`
+    try {
+      const fileArr = Array.isArray(fileInput) ? fileInput : [fileInput]
+      let totalInserted = 0
+      let totalFallback = 0
+
+      for (let i = 0; i < fileArr.length; i++) {
+        if (fileArr.length > 1) {
+          setAlert({ type: 'warning', msg: `Đang tải lên phần ${i + 1}/${fileArr.length}...` })
+        }
+        const data = await processSingleFile(fileArr[i])
+        totalInserted += data.rows_inserted || 0
+        
+        const fallbackCount = (data.sample_categorized || []).filter(
+          t => t.confidence === 'low-fallback'
+        ).length
+        totalFallback += fallbackCount
+      }
+
+      let msg = `✅ Tải lên thành công! Đã xử lý tổng cộng ${totalInserted} giao dịch.`
+      if (totalFallback > 0) {
+        msg += ` (${totalFallback} giao dịch dùng phân loại dự phòng)`
       }
       setAlert({ type: 'success', msg })
       await fetchData(month)
