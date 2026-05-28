@@ -3,9 +3,24 @@ import ReactMarkdown from 'react-markdown'
 import './Chatbot.css'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+const CHAT_SESSION_KEY = 'budgetbot.chatSessionId'
 
-export default function Chatbot({ authFetch, CATEGORY_VI }) {
+function getChatSessionId() {
+  try {
+    const existing = window.localStorage.getItem(CHAT_SESSION_KEY)
+    if (existing) return existing
+
+    const next = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    window.localStorage.setItem(CHAT_SESSION_KEY, next)
+    return next
+  } catch {
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  }
+}
+
+export default function Chatbot({ authFetch }) {
   const [isOpen, setIsOpen] = useState(false)
+  const [sessionId] = useState(getChatSessionId)
   const [messages, setMessages] = useState([
     { role: 'assistant', text: 'Chào bạn! Mình là AI Money Coach. Bạn muốn hỏi gì về chi tiêu, hay muốn mình đề xuất và thiết lập ngân sách?' }
   ])
@@ -28,10 +43,7 @@ export default function Chatbot({ authFetch, CATEGORY_VI }) {
 
     const userMsg = input.trim()
     setInput('')
-    
-    // Grab the last 5 messages for context (stateless frontend memory)
-    const history = messages.slice(-5)
-    
+
     setMessages(prev => [...prev, { role: 'user', text: userMsg }, { role: 'assistant', text: '' }])
     setLoading(true)
 
@@ -39,7 +51,7 @@ export default function Chatbot({ authFetch, CATEGORY_VI }) {
       const res = await authFetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMsg, history: history }),
+        body: JSON.stringify({ message: userMsg, session_id: sessionId }),
       })
 
       if (!res.ok) throw new Error('Failed to fetch from chat API')

@@ -6,6 +6,7 @@ Interface:
     summary(user_id, month=None) -> {category: {"total": float, "count": int}}
 """
 import json
+import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -107,6 +108,27 @@ class PostgresUserStore:
                     updated_at TIMESTAMPTZ DEFAULT NOW(),
                     PRIMARY KEY (user_id, category)
                 );
+                CREATE TABLE IF NOT EXISTS chat_sessions (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    summary TEXT NOT NULL DEFAULT '',
+                    profile_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    message_count INTEGER NOT NULL DEFAULT 0,
+                    summarized_through_id BIGINT NOT NULL DEFAULT 0,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS chat_sessions_user_idx ON chat_sessions(user_id, updated_at DESC);
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id BIGSERIAL PRIMARY KEY,
+                    session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                    user_id TEXT NOT NULL,
+                    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+                    content TEXT NOT NULL,
+                    token_estimate INTEGER NOT NULL DEFAULT 0,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS chat_messages_session_id_idx ON chat_messages(session_id, id DESC);
             """)
 
     def add_transaction(self, user_id: str, txn: dict) -> None:
@@ -194,6 +216,107 @@ class PostgresUserStore:
             cur.execute("SELECT category, amount FROM budgets WHERE user_id = %s", (user_id,))
             return {r[0]: float(r[1]) for r in cur.fetchall()}
 
+    def get_or_create_chat_session(self, user_id: str, session_id: str | None = None) -> dict:
+        session_id = session_id or str(uuid.uuid4())
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO chat_sessions (id, user_id)
+                VALUES (%s, %s)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                (session_id, user_id),
+            )
+            cur.execute(
+                """
+                SELECT id, user_id, summary, profile_json, message_count, summarized_through_id
+                FROM chat_sessions
+                WHERE id = %s AND user_id = %s
+                """,
+                (session_id, user_id),
+            )
+            r = cur.fetchone()
+            if not r:
+                raise ValueError("Chat session does not belong to this user")
+            profile = r[3] if isinstance(r[3], dict) else json.loads(r[3] or "{}")
+            return {
+                "id": r[0],
+                "user_id": r[1],
+                "summary": r[2] or "",
+                "profile": profile,
+                "message_count": int(r[4] or 0),
+                "summarized_through_id": int(r[5] or 0),
+            }
+
+    def add_chat_message(self, user_id: str, session_id: str, role: str, content: str) -> int:
+        if role not in {"user", "assistant"}:
+            raise ValueError("role must be user or assistant")
+        token_estimate = max(1, len(content) // 4)
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO chat_messages (session_id, user_id, role, content, token_estimate)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (session_id, user_id, role, content, token_estimate),
+            )
+            message_id = cur.fetchone()[0]
+            cur.execute(
+                """
+                UPDATE chat_sessions
+                SET message_count = message_count + 1, updated_at = NOW()
+                WHERE id = %s AND user_id = %s
+                """,
+                (session_id, user_id),
+            )
+            return int(message_id)
+
+    def list_recent_chat_messages(self, user_id: str, session_id: str, limit: int = 8) -> list:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, role, content, created_at
+                FROM (
+                    SELECT id, role, content, created_at
+                    FROM chat_messages
+                    WHERE user_id = %s AND session_id = %s
+                    ORDER BY id DESC
+                    LIMIT %s
+                ) recent
+                ORDER BY id ASC
+                """,
+                (user_id, session_id, limit),
+            )
+            return [{"id": r[0], "role": r[1], "text": r[2], "created_at": str(r[3])} for r in cur.fetchall()]
+
+    def list_chat_messages_for_summary(self, user_id: str, session_id: str, keep_recent: int = 8, limit: int = 20) -> list:
+        session = self.get_or_create_chat_session(user_id, session_id)
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, role, content
+                FROM chat_messages
+                WHERE user_id = %s AND session_id = %s AND id > %s
+                ORDER BY id ASC
+                """,
+                (user_id, session_id, session["summarized_through_id"]),
+            )
+            rows = cur.fetchall()
+        compactable = rows[:-keep_recent] if len(rows) > keep_recent else []
+        return [{"id": r[0], "role": r[1], "text": r[2]} for r in compactable[:limit]]
+
+    def update_chat_summary(self, user_id: str, session_id: str, summary: str, summarized_through_id: int) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE chat_sessions
+                SET summary = %s, summarized_through_id = GREATEST(summarized_through_id, %s), updated_at = NOW()
+                WHERE id = %s AND user_id = %s
+                """,
+                (summary, summarized_through_id, session_id, user_id),
+            )
+
 
 class SQLiteUserStore:
     def __init__(self, db_path: str):
@@ -234,6 +357,28 @@ class SQLiteUserStore:
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (user_id, category)
             );
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                summary TEXT NOT NULL DEFAULT '',
+                profile_json TEXT NOT NULL DEFAULT '{}',
+                message_count INTEGER NOT NULL DEFAULT 0,
+                summarized_through_id INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS chat_sessions_user_idx ON chat_sessions(user_id, updated_at DESC);
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+                content TEXT NOT NULL,
+                token_estimate INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS chat_messages_session_id_idx ON chat_messages(session_id, id DESC);
         """)
         self.conn.commit()
 
@@ -310,6 +455,83 @@ class SQLiteUserStore:
     def get_budgets(self, user_id: str) -> dict:
         cur = self.conn.execute("SELECT category, amount FROM budgets WHERE user_id = ?", (user_id,))
         return {r[0]: r[1] for r in cur.fetchall()}
+
+    def get_or_create_chat_session(self, user_id: str, session_id: str | None = None) -> dict:
+        session_id = session_id or str(uuid.uuid4())
+        self.conn.execute(
+            "INSERT OR IGNORE INTO chat_sessions (id, user_id) VALUES (?, ?)",
+            (session_id, user_id),
+        )
+        self.conn.commit()
+        cur = self.conn.execute(
+            "SELECT id, user_id, summary, profile_json, message_count, summarized_through_id "
+            "FROM chat_sessions WHERE id = ? AND user_id = ?",
+            (session_id, user_id),
+        )
+        r = cur.fetchone()
+        if not r:
+            raise ValueError("Chat session does not belong to this user")
+        return {
+            "id": r[0],
+            "user_id": r[1],
+            "summary": r[2] or "",
+            "profile": json.loads(r[3] or "{}"),
+            "message_count": int(r[4] or 0),
+            "summarized_through_id": int(r[5] or 0),
+        }
+
+    def add_chat_message(self, user_id: str, session_id: str, role: str, content: str) -> int:
+        if role not in {"user", "assistant"}:
+            raise ValueError("role must be user or assistant")
+        token_estimate = max(1, len(content) // 4)
+        cur = self.conn.execute(
+            "INSERT INTO chat_messages (session_id, user_id, role, content, token_estimate) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (session_id, user_id, role, content, token_estimate),
+        )
+        self.conn.execute(
+            "UPDATE chat_sessions SET message_count = message_count + 1, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND user_id = ?",
+            (session_id, user_id),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def list_recent_chat_messages(self, user_id: str, session_id: str, limit: int = 8) -> list:
+        cur = self.conn.execute(
+            """
+            SELECT id, role, content, created_at
+            FROM (
+                SELECT id, role, content, created_at
+                FROM chat_messages
+                WHERE user_id = ? AND session_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+            ) recent
+            ORDER BY id ASC
+            """,
+            (user_id, session_id, limit),
+        )
+        return [{"id": r[0], "role": r[1], "text": r[2], "created_at": r[3]} for r in cur.fetchall()]
+
+    def list_chat_messages_for_summary(self, user_id: str, session_id: str, keep_recent: int = 8, limit: int = 20) -> list:
+        session = self.get_or_create_chat_session(user_id, session_id)
+        cur = self.conn.execute(
+            "SELECT id, role, content FROM chat_messages "
+            "WHERE user_id = ? AND session_id = ? AND id > ? ORDER BY id ASC",
+            (user_id, session_id, session["summarized_through_id"]),
+        )
+        rows = cur.fetchall()
+        compactable = rows[:-keep_recent] if len(rows) > keep_recent else []
+        return [{"id": r[0], "role": r[1], "text": r[2]} for r in compactable[:limit]]
+
+    def update_chat_summary(self, user_id: str, session_id: str, summary: str, summarized_through_id: int) -> None:
+        self.conn.execute(
+            "UPDATE chat_sessions SET summary = ?, summarized_through_id = MAX(summarized_through_id, ?), "
+            "updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?",
+            (summary, summarized_through_id, session_id, user_id),
+        )
+        self.conn.commit()
 
 
 def _aggregate(rows: list) -> dict:

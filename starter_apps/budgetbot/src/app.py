@@ -1,6 +1,6 @@
 """FastAPI app for BudgetBot. Runtime-agnostic."""
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 import boto3
 import uuid
@@ -256,15 +256,10 @@ def job_status(
 
 # ── Chatbot & Budgets ─────────────────────────────────────────────────────────
 
-from typing import Optional, List
-
-class ChatHistoryMessage(BaseModel):
-    role: str
-    text: str
-
 class ChatBody(BaseModel):
     message: str
-    history: Optional[List[ChatHistoryMessage]] = None
+    session_id: Optional[str] = None
+    history: Optional[List[dict]] = None
 
 from fastapi.responses import StreamingResponse
 
@@ -274,8 +269,7 @@ def chat(
     body: ChatBody,
     x_user_id: Optional[str] = Header(default=None),
 ) -> StreamingResponse:
-    history_dict = [m.dict() for m in body.history] if body.history else []
-    generator = handlers.handle_chat(_resolve_user_id(request, x_user_id), body.message, history_dict, userstore, chatbot_client)
+    generator = handlers.handle_chat(_resolve_user_id(request, x_user_id), body.message, body.session_id, userstore, chatbot_client)
     return StreamingResponse(generator, media_type="text/event-stream")
 
 @app.get("/budgets")

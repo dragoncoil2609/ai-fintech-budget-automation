@@ -4,9 +4,57 @@ import io
 import json
 import uuid
 import logging
+import re
 from typing import Optional
 from .metrics import put_metric
 logger = logging.getLogger(__name__)
+
+
+CHAT_RECENT_MESSAGE_LIMIT = 8
+CHAT_SUMMARY_KEEP_RECENT = 8
+CHAT_SUMMARY_BATCH_LIMIT = 20
+CHAT_TRANSACTION_LIMIT = 40
+
+_CATEGORY_HINTS = {
+    "Food": ["food", "eat", "eating", "restaurant", "coffee", "cafe", "ăn", "an", "uống", "uong"],
+    "Transport": ["transport", "grab", "taxi", "fuel", "di chuyển", "di chuyen", "xe"],
+    "Shopping": ["shopping", "shop", "mua sắm", "mua sam"],
+    "Utilities": ["utilities", "electric", "water", "internet", "tiện ích", "tien ich"],
+    "Entertainment": ["entertainment", "game", "cinema", "giải trí", "giai tri"],
+    "Health": ["health", "pharmacy", "hospital", "sức khỏe", "suc khoe"],
+    "Subscriptions": ["subscription", "subscriptions", "netflix", "spotify", "đăng ký", "dang ky"],
+    "Income": ["income", "salary", "thu nhập", "thu nhap", "lương", "luong"],
+    "Transfer": ["transfer", "chuyển khoản", "chuyen khoan"],
+    "Other": ["other", "khác", "khac"],
+}
+
+
+def _normalize_chat_session_id(user_id: str, session_id: str | None) -> str | None:
+    if not session_id:
+        return None
+    safe_session = re.sub(r"[^a-zA-Z0-9_.:-]", "-", session_id.strip())[:120]
+    safe_user = re.sub(r"[^a-zA-Z0-9_.:-]", "-", user_id.strip())[:80]
+    if not safe_session:
+        return None
+    return f"{safe_user}:{safe_session}"
+
+
+def _select_chat_transactions(message: str, transactions: list, limit: int = CHAT_TRANSACTION_LIMIT) -> list:
+    if len(transactions) <= limit:
+        return transactions
+
+    message_l = message.lower()
+    hinted_categories = [
+        category
+        for category, hints in _CATEGORY_HINTS.items()
+        if any(hint in message_l for hint in hints)
+    ]
+    if hinted_categories:
+        filtered = [t for t in transactions if t.get("category") in hinted_categories]
+        if filtered:
+            return filtered[:limit]
+
+    return transactions[:limit]
 
 
 def _parse_csv(data: bytes) -> list:
@@ -481,21 +529,75 @@ def handle_clear_transactions(user_id: str, userstore) -> dict:
     userstore.clear_transactions(user_id)
     return {"status": "success"}
 
-def handle_chat(user_id: str, message: str, history: list, userstore, chatbot_client):
-    transactions = userstore.list_transactions(user_id)
+def _chat_memory_available(userstore) -> bool:
+    required = [
+        "get_or_create_chat_session",
+        "add_chat_message",
+        "list_recent_chat_messages",
+        "list_chat_messages_for_summary",
+        "update_chat_summary",
+    ]
+    return all(hasattr(userstore, name) for name in required)
+
+
+def handle_chat(user_id: str, message: str, session_id: str | None, userstore, chatbot_client):
+    all_transactions = userstore.list_transactions(user_id)
+    transactions = _select_chat_transactions(message, all_transactions)
     budgets = userstore.get_budgets(user_id)
     summary = userstore.summary(user_id)
+
+    session = {"id": session_id, "summary": "", "profile": {}, "message_count": 0}
+    recent_messages = [{"role": "user", "text": message}]
+
+    if _chat_memory_available(userstore):
+        server_session_id = _normalize_chat_session_id(user_id, session_id)
+        session = userstore.get_or_create_chat_session(user_id, server_session_id)
+        userstore.add_chat_message(user_id, session["id"], "user", message)
+        session = userstore.get_or_create_chat_session(user_id, session["id"])
+        recent_messages = userstore.list_recent_chat_messages(
+            user_id,
+            session["id"],
+            limit=CHAT_RECENT_MESSAGE_LIMIT,
+        )
     
-    stream_generator = chatbot_client.chat(user_id, message, history, transactions, budgets, summary, userstore)
+    stream_generator = chatbot_client.chat(
+        user_id=user_id,
+        messages_context=recent_messages,
+        transactions=transactions,
+        budgets=budgets,
+        summary=summary,
+        memory_summary=session.get("summary", ""),
+        profile=session.get("profile", {}),
+        userstore=userstore,
+    )
     
     def sse_generator():
+        assistant_chunks = []
         for chunk in stream_generator:
+            assistant_chunks.append(chunk)
             # SSE format: data: <content>\n\n
             # Ensure newlines in chunk are properly handled if necessary, 
             # though usually just passing the string is fine.
             # Replace newlines in chunk with a placeholder or just send JSON to be safe.
             import json
-            yield f"data: {json.dumps({'text': chunk})}\n\n"
+            yield f"data: {json.dumps({'text': chunk}, ensure_ascii=False)}\n\n"
+
+        assistant_text = "".join(assistant_chunks).strip()
+        if assistant_text and _chat_memory_available(userstore):
+            userstore.add_chat_message(user_id, session["id"], "assistant", assistant_text)
+            messages_to_compact = userstore.list_chat_messages_for_summary(
+                user_id,
+                session["id"],
+                keep_recent=CHAT_SUMMARY_KEEP_RECENT,
+                limit=CHAT_SUMMARY_BATCH_LIMIT,
+            )
+            if messages_to_compact:
+                try:
+                    updated_summary = chatbot_client.summarize_memory(session.get("summary", ""), messages_to_compact)
+                    max_message_id = max(m["id"] for m in messages_to_compact)
+                    userstore.update_chat_summary(user_id, session["id"], updated_summary, max_message_id)
+                except Exception:
+                    logger.exception({"event": "chat_memory_summary_failed", "user_id": user_id, "session_id": session["id"]})
             
     return sse_generator()
 

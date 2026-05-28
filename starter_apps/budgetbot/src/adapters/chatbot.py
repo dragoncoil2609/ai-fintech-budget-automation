@@ -26,6 +26,31 @@ Transactions context:
 
 Current Budgets context:
 {budgets}
+
+Conversation Memory context:
+{memory_summary}
+
+User Profile Memory context:
+{profile}
+"""
+
+SUMMARY_PROMPT = """Update the conversation memory for an AI money coach.
+
+Keep only durable information that helps future financial coaching:
+- user goals, constraints, preferences, and decisions
+- budget limits or categories discussed
+- unresolved follow-up items
+
+Do not include greetings, filler, duplicated details, or exact transaction math unless the user stated it as a preference or goal.
+Keep the result concise, under 800 tokens.
+
+Existing memory:
+{existing_summary}
+
+New conversation chunk:
+{messages}
+
+Return the updated memory only.
 """
 
 class ChatbotAI:
@@ -33,7 +58,17 @@ class ChatbotAI:
         self.runtime = boto3.client("bedrock-runtime", region_name=region)
         self.model_id = model_id
 
-    def chat(self, user_id: str, message: str, history: list, transactions: list, budgets: dict, summary: dict, userstore: Any):
+    def chat(
+        self,
+        user_id: str,
+        messages_context: list,
+        transactions: list,
+        budgets: dict,
+        summary: dict,
+        memory_summary: str = "",
+        profile: dict | None = None,
+        userstore: Any = None,
+    ):
         # Format transactions
         txns_str = "\n".join([f"- {t['date']}: {t['description']} ({t['amount']}) [{t['category']}]" for t in transactions])
         if not txns_str:
@@ -49,7 +84,14 @@ class ChatbotAI:
         if not budgets_str:
             budgets_str = "No budgets set."
 
-        system_text = CHATBOT_SYSTEM_PROMPT.format(transactions=txns_str, budgets=budgets_str, summary=summary_str)
+        profile_str = json.dumps(profile or {}, ensure_ascii=False)
+        system_text = CHATBOT_SYSTEM_PROMPT.format(
+            transactions=txns_str,
+            budgets=budgets_str,
+            summary=summary_str,
+            memory_summary=memory_summary or "No saved conversation memory yet.",
+            profile=profile_str,
+        )
 
         tool_config = {
             "tools": [
@@ -73,7 +115,7 @@ class ChatbotAI:
         }
 
         messages = []
-        for msg in history:
+        for msg in messages_context:
             role = msg.get("role")
             text = msg.get("text", "")
             if role in ["user", "assistant"]:
@@ -85,10 +127,8 @@ class ChatbotAI:
         while messages and messages[0]["role"] != "user":
             messages.pop(0)
 
-        if messages and messages[-1]["role"] == "user":
-            messages[-1]["content"][0]["text"] += "\n\n" + message
-        else:
-            messages.append({"role": "user", "content": [{"text": message}]})
+        if not messages:
+            messages.append({"role": "user", "content": [{"text": "Please help me understand my finances."}]})
 
         def stream_generator():
             try:
@@ -168,3 +208,21 @@ class ChatbotAI:
                 yield f"\n\n[Error: {str(e)}]"
 
         return stream_generator()
+
+    def summarize_memory(self, existing_summary: str, messages: list) -> str:
+        if not messages:
+            return existing_summary or ""
+
+        chunk = "\n".join(
+            f"{m.get('role', 'unknown')}: {m.get('text', '')}"
+            for m in messages
+            if m.get("text")
+        )
+        prompt = SUMMARY_PROMPT.format(existing_summary=existing_summary or "None", messages=chunk)
+
+        response = self.runtime.converse(
+            modelId=self.model_id,
+            messages=[{"role": "user", "content": [{"text": prompt}]}],
+            inferenceConfig={"maxTokens": 900, "temperature": 0.1},
+        )
+        return response["output"]["message"]["content"][0]["text"].strip()
