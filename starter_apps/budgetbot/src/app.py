@@ -256,7 +256,6 @@ if config.serve_frontend:
         if you deploy the frontend separately (CloudFront+S3, Amplify, ALB)."""
         return FileResponse(FRONTEND_DIR / "index.html")
 
-──
 # ── AWS Lambda Handler ────────────────────────────────────────────────────────
 # ── AWS Lambda Handler ────────────────────────────────────────────────────────
 if Mangum:
