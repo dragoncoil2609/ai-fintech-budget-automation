@@ -10,6 +10,7 @@ from .metrics import put_metric
 logger = logging.getLogger(__name__)
 
 
+<<<<<<< HEAD
 CHAT_RECENT_MESSAGE_LIMIT = 8
 CHAT_SUMMARY_KEEP_RECENT = 8
 CHAT_SUMMARY_BATCH_LIMIT = 20
@@ -59,22 +60,31 @@ def _select_chat_transactions(message: str, transactions: list, limit: int = CHA
 
 def _parse_csv(data: bytes) -> list:
     """Expect CSV columns: date, description, amount. Header row optional."""
+=======
+def _parse_csv(data: bytes, mapping: dict = None) -> list:
+    """Expect CSV columns. Header row optional. If mapping is provided, use it."""
+>>>>>>> 5e2498f (feat: complete 4 practical features (budget, manual txn, csv mapping, trend chart))
     text = data.decode("utf-8-sig", errors="replace")
     reader = csv.reader(io.StringIO(text))
     rows = list(reader)
     if not rows:
         return []
-    # Detect header
-    header = [c.lower().strip() for c in rows[0]]
-    if "date" in header and "amount" in header:
-        idx = {col: i for i, col in enumerate(header)}
-        data_rows = rows[1:]
+    
+    # Detect header or use mapping
+    data_rows = rows
+    if mapping:
+        idx = {k: int(v) for k, v in mapping.items()}
     else:
-        idx = {"date": 0, "description": 1, "amount": 2}
-        data_rows = rows
+        header = [c.lower().strip() for c in rows[0]]
+        if "date" in header and "amount" in header:
+            idx = {col: i for i, col in enumerate(header)}
+            data_rows = rows[1:]
+        else:
+            idx = {"date": 0, "description": 1, "amount": 2}
+
     parsed = []
     for r in data_rows:
-        if len(r) < 3 or not r[idx.get("date", 0)].strip():
+        if len(r) <= max(idx.values()) or not r[idx.get("date", 0)].strip():
             continue
         try:
             parsed.append({
@@ -147,6 +157,7 @@ def _categorize_and_save(
     ai_client,
     userstore,
     route: str = "/process",
+    mapping: dict = None,
 ) -> dict:
     """Parse CSV/PDF → categorize mỗi row bằng AI → lưu vào userstore.
     Dùng chung cho cả upload trực tiếp, xử lý từ S3 và SQS worker.
@@ -154,7 +165,7 @@ def _categorize_and_save(
     if filename.lower().endswith(".pdf"):
         rows = _parse_pdf(data)
     else:
-        rows = _parse_csv(data)
+        rows = _parse_csv(data, mapping=mapping)
 
     put_metric(
         "RowsParsed",
@@ -274,6 +285,7 @@ def handle_process_from_s3(
     storage,
     ai_client,
     userstore,
+    mapping: dict = None,
 ) -> dict:
     """Đọc file đã upload lên S3 bằng presigned URL → categorize → lưu vào userstore.
     Đây là bước xử lý đồng bộ sau presigned upload.
@@ -298,6 +310,7 @@ def handle_process_from_s3(
             ai_client=ai_client,
             userstore=userstore,
             route="/process",
+            mapping=mapping,
         )
 
         put_metric(
@@ -326,6 +339,7 @@ def handle_enqueue(
     filename: str,
     sqs_queue_url: str,
     userstore,
+    mapping: dict = None,
 ) -> dict:
     import boto3
     import traceback
@@ -360,6 +374,7 @@ def handle_enqueue(
             "user_id": user_id,
             "s3_key": s3_key,
             "filename": filename,
+            "mapping": mapping,
         }
         resp = sqs.send_message(
             QueueUrl=sqs_queue_url,
@@ -417,6 +432,7 @@ def handle_sqs_event(event: dict, storage, ai_client, userstore) -> dict:
             user_id = message["user_id"]
             s3_key = message["s3_key"]
             filename = message["filename"]
+            mapping = message.get("mapping")
 
             logger.info({"event": "sqs_job_start", "job_id": job_id, "s3_key": s3_key})
 
@@ -441,6 +457,7 @@ def handle_sqs_event(event: dict, storage, ai_client, userstore) -> dict:
                 ai_client=ai_client,
                 userstore=userstore,
                 route="sqs_worker",
+                mapping=mapping,
             )
 
             userstore.update_job_status(job_id, "COMPLETED", rows_inserted=result["rows_inserted"])
@@ -505,6 +522,16 @@ def handle_summary(user_id: str, month: Optional[str], userstore) -> dict:
     expenses = {k: v for k, v in summary.items() if v["total"] < 0}
     sorted_cats = sorted(expenses.items(), key=lambda kv: kv[1]["total"])
     
+    # Calculate daily trends
+    from collections import defaultdict
+    txns = userstore.list_transactions(user_id, month=month)
+    daily_agg = defaultdict(float)
+    for t in txns:
+        if float(t["amount"]) < 0:
+            daily_agg[t["date"][:10]] += abs(float(t["amount"]))
+    
+    daily_trends = [{"date": k, "amount": v} for k, v in sorted(daily_agg.items())]
+
     return {
         "user_id": user_id,
         "month": month,
@@ -514,6 +541,7 @@ def handle_summary(user_id: str, month: Optional[str], userstore) -> dict:
             {"category": cat, "total": v["total"], "count": v["count"]}
             for cat, v in sorted_cats[:3]
         ],
+        "daily_trends": daily_trends,
     }
 
 
@@ -529,6 +557,7 @@ def handle_clear_transactions(user_id: str, userstore) -> dict:
     userstore.clear_transactions(user_id)
     return {"status": "success"}
 
+<<<<<<< HEAD
 def _chat_memory_available(userstore) -> bool:
     required = [
         "get_or_create_chat_session",
@@ -543,6 +572,30 @@ def _chat_memory_available(userstore) -> bool:
 def handle_chat(user_id: str, message: str, session_id: str | None, userstore, chatbot_client):
     all_transactions = userstore.list_transactions(user_id)
     transactions = _select_chat_transactions(message, all_transactions)
+=======
+def handle_delete_transaction(user_id: str, txn_id: int, userstore) -> dict:
+    userstore.delete_transaction(user_id, txn_id)
+    return {"status": "success"}
+
+def handle_set_budget(user_id: str, category: str, amount: float, userstore) -> dict:
+    userstore.set_budget(user_id, category, amount)
+    return {"status": "success"}
+
+def handle_add_transaction(user_id: str, data: dict, userstore, ai_client) -> dict:
+    import uuid
+    txn = {
+        "date": data.get("date"),
+        "description": data.get("description"),
+        "amount": data.get("amount"),
+        "category": data.get("category", "Other"),
+        "confidence": "high", # manual entry -> high confidence
+    }
+    userstore.add_transaction(user_id, txn)
+    return {"status": "success"}
+
+def handle_chat(user_id: str, message: str, history: list, userstore, chatbot_client):
+    transactions = userstore.list_transactions(user_id)
+>>>>>>> 5e2498f (feat: complete 4 practical features (budget, manual txn, csv mapping, trend chart))
     budgets = userstore.get_budgets(user_id)
     summary = userstore.summary(user_id)
 

@@ -164,6 +164,10 @@ class PostgresUserStore:
         with self.conn.cursor() as cur:
             cur.execute("DELETE FROM transactions WHERE user_id = %s", (user_id,))
 
+    def delete_transaction(self, user_id: str, txn_id: int) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute("DELETE FROM transactions WHERE user_id = %s AND id = %s", (user_id, txn_id))
+
     def summary(self, user_id: str, month: str | None = None) -> dict:
         sql = "SELECT category, SUM(amount), COUNT(*) FROM transactions WHERE user_id = %s"
         params: list = [user_id]
@@ -414,6 +418,10 @@ class SQLiteUserStore:
         self.conn.execute("DELETE FROM transactions WHERE user_id = ?", (user_id,))
         self.conn.commit()
 
+    def delete_transaction(self, user_id: str, txn_id: int) -> None:
+        self.conn.execute("DELETE FROM transactions WHERE user_id = ? AND id = ?", (user_id, txn_id))
+        self.conn.commit()
+
     def summary(self, user_id: str, month: str | None = None) -> dict:
         return _aggregate(self.list_transactions(user_id, month))
 
@@ -654,7 +662,7 @@ class MySQLUserStore:
             )
 
     def list_transactions(self, user_id, month=None):
-        sql = "SELECT txn_date, description, amount, category, confidence FROM transactions WHERE user_id = %s"
+        sql = "SELECT id, txn_date, description, amount, category, confidence FROM transactions WHERE user_id = %s"
         params: list = [user_id]
         if month:
             sql += " AND DATE_FORMAT(txn_date, '%%Y-%%m') = %s"
@@ -663,10 +671,14 @@ class MySQLUserStore:
         with self.conn.cursor() as cur:
             cur.execute(sql, params)
             return [
-                {"date": str(r[0]), "description": r[1], "amount": float(r[2]),
-                 "category": r[3], "confidence": r[4]}
+                {"id": r[0], "date": str(r[1]), "description": r[2], "amount": float(r[3]),
+                 "category": r[4], "confidence": r[5]}
                 for r in cur.fetchall()
             ]
+
+    def delete_transaction(self, user_id: str, txn_id: int) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute("DELETE FROM transactions WHERE user_id = %s AND id = %s", (user_id, txn_id))
 
     def summary(self, user_id, month=None):
         sql = "SELECT category, SUM(amount), COUNT(*) FROM transactions WHERE user_id = %s"

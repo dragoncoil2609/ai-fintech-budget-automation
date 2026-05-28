@@ -3,6 +3,7 @@ import './App.css'
 import AuthPage from './components/AuthPage.jsx'
 import Chatbot from './components/Chatbot.jsx'
 import { getCurrentToken, signOut, getUserEmail } from './auth/cognito.js'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 
 /* ────────────────────────────────────────────────────────────
    CONFIG
@@ -200,6 +201,132 @@ function EditModal({ txn, onClose, onSave }) {
 }
 
 /* ────────────────────────────────────────────────────────────
+   BUDGET SETUP MODAL
+──────────────────────────────────────────────────────────── */
+function BudgetSetupModal({ budgets, onClose, onSave }) {
+  const [cat, setCat] = useState('Food')
+  const [amt, setAmt] = useState(budgets?.Food || 0)
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    setSaving(true)
+    await onSave(cat, Number(amt))
+    setSaving(false)
+    onClose()
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <h3 className="modal-title">⚙️ Cài đặt ngân sách</h3>
+        <div style={{marginBottom: 10}}>
+          <label>Danh mục</label>
+          <select className="modal-select filter-select" value={cat} onChange={e => {setCat(e.target.value); setAmt(budgets?.[e.target.value] || 0)}}>
+            {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_ICON[c]} {CATEGORY_VI[c]}</option>)}
+          </select>
+        </div>
+        <div style={{marginBottom: 20}}>
+          <label>Giới hạn (VNĐ)</label>
+          <input type="number" className="modal-input" value={amt} onChange={e => setAmt(e.target.value)} />
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={saving}>Huỷ</button>
+          <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>💾 Lưu</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────
+   ADD TRANSACTION MODAL
+──────────────────────────────────────────────────────────── */
+function AddTransactionModal({ onClose, onSave }) {
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [desc, setDesc] = useState('')
+  const [amt, setAmt] = useState('')
+  const [cat, setCat] = useState('Food')
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    setSaving(true)
+    await onSave({ date, description: desc, amount: Number(amt), category: cat })
+    setSaving(false)
+    onClose()
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <h3 className="modal-title">➕ Giao dịch thủ công</h3>
+        <div style={{display: 'flex', gap: 10, marginBottom: 10}}>
+          <div style={{flex: 1}}>
+            <label>Ngày</label>
+            <input type="date" className="modal-input" value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+          <div style={{flex: 1}}>
+            <label>Số tiền</label>
+            <input type="number" className="modal-input" placeholder="-100000 hoặc 50000" value={amt} onChange={e => setAmt(e.target.value)} />
+          </div>
+        </div>
+        <div style={{marginBottom: 10}}>
+          <label>Mô tả</label>
+          <input type="text" className="modal-input" placeholder="Ăn trưa..." value={desc} onChange={e => setDesc(e.target.value)} />
+        </div>
+        <div style={{marginBottom: 20}}>
+          <label>Danh mục</label>
+          <select className="modal-select filter-select" value={cat} onChange={e => setCat(e.target.value)}>
+            {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_ICON[c]} {CATEGORY_VI[c]}</option>)}
+          </select>
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={saving}>Huỷ</button>
+          <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>💾 Thêm</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────
+   CSV PREVIEW MODAL
+──────────────────────────────────────────────────────────── */
+function CSVPreviewModal({ previewData, onClose, onConfirm }) {
+  const [colDate, setColDate] = useState('0')
+  const [colDesc, setColDesc] = useState('1')
+  const [colAmt, setColAmt] = useState('2')
+
+  return (
+    <div className="modal-backdrop" style={{zIndex: 999}} onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{maxWidth: 600}}>
+        <h3 className="modal-title">Cấu hình Cột CSV</h3>
+        <p className="modal-sub">Vui lòng ánh xạ cột dữ liệu để AI phân tích chính xác</p>
+        <div style={{display: 'flex', gap: 10, marginBottom: 10}}>
+          <div style={{flex: 1}}><label>Cột Ngày</label><input type="number" className="modal-input" value={colDate} onChange={e=>setColDate(e.target.value)} /></div>
+          <div style={{flex: 1}}><label>Cột Mô tả</label><input type="number" className="modal-input" value={colDesc} onChange={e=>setColDesc(e.target.value)} /></div>
+          <div style={{flex: 1}}><label>Cột Số tiền</label><input type="number" className="modal-input" value={colAmt} onChange={e=>setColAmt(e.target.value)} /></div>
+        </div>
+        <div style={{maxHeight: 200, overflow: 'auto', marginBottom: 20, fontSize: 12, background: '#f8fafc', padding: 8, borderRadius: 8}}>
+          <table style={{width: '100%', borderCollapse: 'collapse'}}>
+            <tbody>
+              {previewData.map((row, i) => (
+                <tr key={i}>
+                  {row.map((cell, j) => <td key={j} style={{border: '1px solid #e2e8f0', padding: 4}}>[{j}] {cell}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>Huỷ</button>
+          <button className="btn btn-primary btn-sm" onClick={() => onConfirm({date: colDate, description: colDesc, amount: colAmt})}>🚀 Tiếp tục Tải lên</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────
    MAIN APP
 ──────────────────────────────────────────────────────────── */
 export default function App() {
@@ -235,6 +362,10 @@ export default function App() {
   const [editTxn, setEditTxn]       = useState(null)
   const [clearing, setClearing]     = useState(false)
   const [budgetAlerts, setBudgetAlerts] = useState([])
+  const [showBudget, setShowBudget] = useState(false)
+  const [showAddTxn, setShowAddTxn] = useState(false)
+  const [csvPreviewData, setCsvPreviewData] = useState(null)
+  const [pendingFile, setPendingFile] = useState(null)
   const fileRef                     = useRef()
 
   const handleSignOut = () => {
@@ -301,14 +432,30 @@ export default function App() {
     throw new Error('Xử lý quá thời gian chờ (2 phút)')
   }, [authFetch])
 
-  /* --- Upload --- */
-  const handleUpload = async (file) => {
+  const handleUploadClick = (file) => {
     if (!file) return
     const ext = file.name.toLowerCase().split('.').pop()
     if (!['csv', 'pdf'].includes(ext)) {
       setAlert({ type: 'error', msg: 'Chỉ hỗ trợ file CSV hoặc PDF!' })
       return
     }
+    
+    if (ext === 'csv') {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const text = e.target.result
+        const rows = text.split('\n').map(r => r.split(',')).slice(0, 5)
+        setCsvPreviewData(rows)
+        setPendingFile(file)
+      }
+      reader.readAsText(file)
+    } else {
+      handleUpload(file, null)
+    }
+  }
+
+  /* --- Upload --- */
+  const handleUpload = async (file, mapping) => {
     setUploading(true)
     setAlert(null)
 
@@ -347,7 +494,7 @@ export default function App() {
         const enqueueRes = await authFetch(`${API_BASE}/enqueue`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ s3_key, filename: file.name }),
+          body: JSON.stringify({ s3_key, filename: file.name, mapping }),
         })
         const enqueueData = await enqueueRes.json()
         if (!enqueueRes.ok) throw new Error(enqueueData.detail || 'Enqueue thất bại')
@@ -379,7 +526,7 @@ export default function App() {
     e.preventDefault()
     setDragOver(false)
     const file = e.dataTransfer.files[0]
-    handleUpload(file)
+    handleUploadClick(file)
   }
 
   /* --- Edit category --- */
@@ -391,6 +538,48 @@ export default function App() {
         body: JSON.stringify({ category }),
       })
       if (!res.ok) throw new Error('Không thể cập nhật danh mục')
+      await fetchData(month)
+    } catch (e) {
+      setAlert({ type: 'error', msg: e.message })
+    }
+  }
+
+  /* --- New APIs --- */
+  const handleSetBudget = async (category, amount) => {
+    try {
+      const res = await authFetch(`${API_BASE}/budgets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category, amount }),
+      })
+      if (!res.ok) throw new Error('Không thể lưu ngân sách')
+      setAlert({ type: 'success', msg: 'Lưu ngân sách thành công!' })
+      await fetchData(month)
+    } catch (e) {
+      setAlert({ type: 'error', msg: e.message })
+    }
+  }
+
+  const handleAddTxn = async (data) => {
+    try {
+      const res = await authFetch(`${API_BASE}/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error('Không thể thêm giao dịch')
+      setAlert({ type: 'success', msg: 'Thêm giao dịch thủ công thành công!' })
+      await fetchData(month)
+    } catch (e) {
+      setAlert({ type: 'error', msg: e.message })
+    }
+  }
+
+  const handleDeleteTxn = async (txnId) => {
+    if (!window.confirm('⚠️ Bạn có chắc muốn xóa giao dịch này?')) return
+    try {
+      const res = await authFetch(`${API_BASE}/transactions/${txnId}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Không thể xóa giao dịch')
       await fetchData(month)
     } catch (e) {
       setAlert({ type: 'error', msg: e.message })
@@ -525,7 +714,7 @@ export default function App() {
               type="file"
               accept=".csv,.pdf"
               style={{ display: 'none' }}
-              onChange={(e) => handleUpload(e.target.files[0])}
+              onChange={(e) => handleUploadClick(e.target.files[0])}
               id="file-input"
             />
           </div>
@@ -539,7 +728,7 @@ export default function App() {
             icon="💸"
             iconBg="rgba(244,63,94,0.15)"
             accent="linear-gradient(135deg,#f43f5e,#ec4899)"
-            sub={`${txnCount} giao dịch`}
+            sub={<div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}><span>{txnCount} giao dịch</span><button className="btn btn-ghost btn-sm" style={{padding: '0 4px'}} onClick={() => setShowBudget(true)}>⚙️ Cài đặt</button></div>}
             loading={loading}
           />
           <SummaryCard
@@ -590,11 +779,38 @@ export default function App() {
             </div>
           </div>
 
+          {/* Trend chart */}
+          <div className="panel" style={{ gridColumn: '1 / -1' }}>
+            <div className="panel-header">
+              <span className="panel-title">📈 Xu hướng chi tiêu</span>
+            </div>
+            <div className="panel-body" style={{ height: 300 }}>
+              {loading ? (
+                <div className="empty-state">
+                  <span className="spinner" style={{ width: 32, height: 32, borderWidth: 3 }} />
+                </div>
+              ) : summary?.daily_trends?.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={summary.daily_trends}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="date" tick={{fontSize: 12}} />
+                    <YAxis tickFormatter={(val) => fmtVND(val)} width={60} tick={{fontSize: 12}} />
+                    <Tooltip formatter={(value) => [fmtFull(value), 'Chi tiêu']} labelStyle={{color: '#333'}} />
+                    <Bar dataKey="amount" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="empty-state">Chưa có dữ liệu xu hướng</div>
+              )}
+            </div>
+          </div>
+
           {/* Transactions table */}
-          <div className="panel">
+          <div className="panel" style={{ gridColumn: '1 / -1' }}>
             <div className="panel-header">
               <span className="panel-title">📋 Danh sách giao dịch</span>
               <div className="filter-bar">
+                <button className="btn btn-primary btn-sm" onClick={() => setShowAddTxn(true)}>+ Thêm GD</button>
                 <select
                   id="month-filter"
                   className="filter-select"
@@ -670,6 +886,14 @@ export default function App() {
                           >
                             ✏️
                           </button>
+                          <button
+                            className="btn-edit"
+                            onClick={() => handleDeleteTxn(txn.id)}
+                            title="Xóa giao dịch"
+                            style={{marginLeft: 4}}
+                          >
+                            🗑️
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -688,6 +912,11 @@ export default function App() {
       }}>
         BudgetBot · Powered by AWS Bedrock · xBrain Hackathon 2026
       </footer>
+
+      {/* Modals */}
+      {showBudget && <BudgetSetupModal budgets={summary?.by_category || {}} onClose={() => setShowBudget(false)} onSave={handleSetBudget} />}
+      {showAddTxn && <AddTransactionModal onClose={() => setShowAddTxn(false)} onSave={handleAddTxn} />}
+      {csvPreviewData && <CSVPreviewModal previewData={csvPreviewData} onClose={() => {setCsvPreviewData(null); setPendingFile(null)}} onConfirm={(mapping) => {setCsvPreviewData(null); handleUpload(pendingFile, mapping)}} />}
 
       {/* Edit modal */}
       {editTxn && (

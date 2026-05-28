@@ -173,6 +173,7 @@ def upload_request(
 class ProcessBody(BaseModel):
     s3_key: str
     filename: str
+    mapping: Optional[dict] = None
 
 
 @app.post("/process")
@@ -197,6 +198,7 @@ def process(
             storage=storage,
             ai_client=ai_client,
             userstore=userstore,
+            mapping=body.mapping,
         )
     except Exception as exc:
         # handle_process_from_s3 cũng đã emit UploadJobFailed.
@@ -206,6 +208,7 @@ def process(
 class EnqueueBody(BaseModel):
     s3_key: str
     filename: str
+    mapping: Optional[dict] = None
 
 
 @app.post("/enqueue")
@@ -231,6 +234,7 @@ def enqueue(
             filename=body.filename,
             sqs_queue_url=config.sqs_queue_url,
             userstore=userstore,
+            mapping=body.mapping,
         )
     except Exception as exc:
         put_metric(
@@ -280,6 +284,20 @@ def get_budgets(
     return handlers.handle_get_budgets(_resolve_user_id(request, x_user_id), userstore)
 
 
+class BudgetUpdate(BaseModel):
+    category: str
+    amount: float
+
+
+@app.post("/budgets")
+def set_budget(
+    request: Request,
+    body: BudgetUpdate,
+    x_user_id: Optional[str] = Header(default=None),
+) -> dict:
+    return handlers.handle_set_budget(_resolve_user_id(request, x_user_id), body.category, body.amount, userstore)
+
+
 # ── Transactions & Summary ────────────────────────────────────────────────────
 
 @app.get("/summary")
@@ -299,6 +317,22 @@ def transactions(
     x_user_id: Optional[str] = Header(default=None),
 ) -> dict:
     return handlers.handle_list_transactions(_resolve_user_id(request, x_user_id), month, userstore)
+
+
+class TransactionCreate(BaseModel):
+    date: str
+    description: str
+    amount: float
+    category: Optional[str] = "Other"
+
+
+@app.post("/transactions")
+def add_transaction(
+    request: Request,
+    body: TransactionCreate,
+    x_user_id: Optional[str] = Header(default=None),
+) -> dict:
+    return handlers.handle_add_transaction(_resolve_user_id(request, x_user_id), body.dict(), userstore, ai_client)
 
 
 class CategoryUpdate(BaseModel):
@@ -321,6 +355,15 @@ def clear_transactions(
     x_user_id: Optional[str] = Header(default=None),
 ) -> dict:
     return handlers.handle_clear_transactions(_resolve_user_id(request, x_user_id), userstore)
+
+
+@app.delete("/transactions/{txn_id}")
+def delete_transaction(
+    request: Request,
+    txn_id: int,
+    x_user_id: Optional[str] = Header(default=None),
+) -> dict:
+    return handlers.handle_delete_transaction(_resolve_user_id(request, x_user_id), txn_id, userstore)
 
 
 # ── Static frontend ───────────────────────────────────────────────────────────
