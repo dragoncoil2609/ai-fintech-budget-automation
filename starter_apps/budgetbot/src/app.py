@@ -263,15 +263,6 @@ if Mangum:
     _mangum_handler = Mangum(app, lifespan="off")
 
     def handler(event, context):
-        """Lambda entrypoint — phân biệt SQS event và API Gateway event."""
-
-        # Fix missing fields from API Gateway / Lambda test events
-        event.setdefault("requestContext", {})
-        event["requestContext"].setdefault("http", {})
-        event["requestContext"]["http"].setdefault("sourceIp", "0.0.0.0")
-        event["requestContext"]["http"].setdefault("userAgent", "unknown")
-
-        # SQS event — Records có eventSource = aws:sqs
         records = event.get("Records", [])
         if records and records[0].get("eventSource") == "aws:sqs":
             return handlers.handle_sqs_event(
@@ -281,29 +272,10 @@ if Mangum:
                 userstore=userstore,
             )
 
-        # API Gateway HTTP event
-        return _mangum_handler(event, context)# ── AWS Lambda Handler ────────────────────────────────────────────────────────
-if Mangum:
-    _mangum_handler = Mangum(app, lifespan="off")
+        if event.get("version") == "2.0":
+            event.setdefault("requestContext", {})
+            event["requestContext"].setdefault("http", {})
+            event["requestContext"]["http"].setdefault("sourceIp", "0.0.0.0")
+            event["requestContext"]["http"].setdefault("userAgent", "unknown")
 
-    def handler(event, context):
-        """Lambda entrypoint — phân biệt SQS event và API Gateway event."""
-
-        # Fix missing fields from API Gateway / Lambda test events
-        event.setdefault("requestContext", {})
-        event["requestContext"].setdefault("http", {})
-        event["requestContext"]["http"].setdefault("sourceIp", "0.0.0.0")
-        event["requestContext"]["http"].setdefault("userAgent", "unknown")
-
-        # SQS event — Records có eventSource = aws:sqs
-        records = event.get("Records", [])
-        if records and records[0].get("eventSource") == "aws:sqs":
-            return handlers.handle_sqs_event(
-                event=event,
-                storage=storage,
-                ai_client=ai_client,
-                userstore=userstore,
-            )
-
-        # API Gateway HTTP event
         return _mangum_handler(event, context)
