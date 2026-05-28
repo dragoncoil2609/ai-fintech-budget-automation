@@ -77,6 +77,19 @@ export const resendConfirmationCode = (email) => {
 };
 
 export const getUserEmail = () => {
-  const user = userPool.getCurrentUser();
-  return user ? user.getUsername() : '';
+  return new Promise((resolve) => {
+    const cognitoUser = userPool.getCurrentUser();
+    if (!cognitoUser) {
+      resolve('');
+      return;
+    }
+    cognitoUser.getSession((err, session) => {
+      if (err) {
+        resolve('');
+        return;
+      }
+      const email = session.getIdToken().payload.email || cognitoUser.getUsername();
+      resolve(email);
+    });
+  });
 };

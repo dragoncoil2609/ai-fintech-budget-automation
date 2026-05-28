@@ -210,10 +210,11 @@ export default function App() {
 
   // Khôi phục session khi reload trang
   useEffect(() => {
-    getCurrentToken().then(t => {
+    getCurrentToken().then(async (t) => {
       if (t) {
         setToken(t)
-        setUserEmail(getUserEmail())
+        const email = await getUserEmail()
+        setUserEmail(email)
       }
       setAuthChecked(true)
     })
