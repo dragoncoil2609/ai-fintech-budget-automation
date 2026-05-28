@@ -10,7 +10,6 @@ from .metrics import put_metric
 logger = logging.getLogger(__name__)
 
 
-<<<<<<< HEAD
 CHAT_RECENT_MESSAGE_LIMIT = 8
 CHAT_SUMMARY_KEEP_RECENT = 8
 CHAT_SUMMARY_BATCH_LIMIT = 20
@@ -58,12 +57,8 @@ def _select_chat_transactions(message: str, transactions: list, limit: int = CHA
     return transactions[:limit]
 
 
-def _parse_csv(data: bytes) -> list:
-    """Expect CSV columns: date, description, amount. Header row optional."""
-=======
 def _parse_csv(data: bytes, mapping: dict = None) -> list:
     """Expect CSV columns. Header row optional. If mapping is provided, use it."""
->>>>>>> 5e2498f (feat: complete 4 practical features (budget, manual txn, csv mapping, trend chart))
     text = data.decode("utf-8-sig", errors="replace")
     reader = csv.reader(io.StringIO(text))
     rows = list(reader)
@@ -557,22 +552,6 @@ def handle_clear_transactions(user_id: str, userstore) -> dict:
     userstore.clear_transactions(user_id)
     return {"status": "success"}
 
-<<<<<<< HEAD
-def _chat_memory_available(userstore) -> bool:
-    required = [
-        "get_or_create_chat_session",
-        "add_chat_message",
-        "list_recent_chat_messages",
-        "list_chat_messages_for_summary",
-        "update_chat_summary",
-    ]
-    return all(hasattr(userstore, name) for name in required)
-
-
-def handle_chat(user_id: str, message: str, session_id: str | None, userstore, chatbot_client):
-    all_transactions = userstore.list_transactions(user_id)
-    transactions = _select_chat_transactions(message, all_transactions)
-=======
 def handle_delete_transaction(user_id: str, txn_id: int, userstore) -> dict:
     userstore.delete_transaction(user_id, txn_id)
     return {"status": "success"}
@@ -593,9 +572,21 @@ def handle_add_transaction(user_id: str, data: dict, userstore, ai_client) -> di
     userstore.add_transaction(user_id, txn)
     return {"status": "success"}
 
-def handle_chat(user_id: str, message: str, history: list, userstore, chatbot_client):
-    transactions = userstore.list_transactions(user_id)
->>>>>>> 5e2498f (feat: complete 4 practical features (budget, manual txn, csv mapping, trend chart))
+
+def _chat_memory_available(userstore) -> bool:
+    required = [
+        "get_or_create_chat_session",
+        "add_chat_message",
+        "list_recent_chat_messages",
+        "list_chat_messages_for_summary",
+        "update_chat_summary",
+    ]
+    return all(hasattr(userstore, name) for name in required)
+
+
+def handle_chat(user_id: str, message: str, session_id: str | None, userstore, chatbot_client):
+    all_transactions = userstore.list_transactions(user_id)
+    transactions = _select_chat_transactions(message, all_transactions)
     budgets = userstore.get_budgets(user_id)
     summary = userstore.summary(user_id)
 
