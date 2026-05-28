@@ -768,7 +768,7 @@ export default function App() {
             <div className="panel-header">
               <span className="panel-title">📊 Chi tiêu theo danh mục</span>
             </div>
-            <div className="panel-body">
+            <div className="panel-body" style={{ maxHeight: 450, overflowY: 'auto' }}>
               {loading ? (
                 <div className="empty-state">
                   <span className="spinner" style={{ width: 32, height: 32, borderWidth: 3 }} />
@@ -780,17 +780,19 @@ export default function App() {
           </div>
 
           {/* Trend chart */}
-          <div className="panel" style={{ gridColumn: '1 / -1' }}>
+          <div className="panel">
             <div className="panel-header">
               <span className="panel-title">📈 Xu hướng chi tiêu</span>
             </div>
-            <div className="panel-body" style={{ height: 350, minHeight: 350, width: '100%' }}>
+            <div className="panel-body" style={{ height: 450, padding: 0 }}>
               {loading ? (
-                <div className="empty-state">
+                <div className="empty-state" style={{ padding: 28 }}>
                   <span className="spinner" style={{ width: 32, height: 32, borderWidth: 3 }} />
                 </div>
               ) : summary?.daily_trends?.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
+                <div style={{ width: '100%', height: '100%', overflowX: 'auto', overflowY: 'hidden', padding: 28 }}>
+                  <div style={{ minWidth: 600, height: '100%' }}>
+                    <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={summary.daily_trends} margin={{ top: 20, right: 20, left: 0, bottom: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.1)" />
                     <XAxis dataKey="date" tick={{fontSize: 12, fill: '#94a3b8'}} stroke="rgba(255,255,255,0.2)" />
@@ -809,6 +811,8 @@ export default function App() {
                     </defs>
                   </BarChart>
                 </ResponsiveContainer>
+                  </div>
+                </div>
               ) : (
                 <div className="empty-state">Chưa có dữ liệu xu hướng</div>
               )}
