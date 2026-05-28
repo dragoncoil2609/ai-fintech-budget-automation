@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from .config import config
 from .adapters import factory
+from .adapters.chatbot import ChatbotAI
 from . import handlers
 from .metrics import put_metric
 # Import Mangum to wrap FastAPI for AWS Lambda
@@ -46,6 +47,7 @@ app.add_middleware(
 ai_client = factory.make_ai()
 storage = factory.make_storage()
 userstore = factory.make_userstore()
+chatbot_client = ChatbotAI(region=config.aws_region, model_id=config.ai_model_id)
 
 
 def _resolve_user_id(request, x_user_id: Optional[str] = None) -> str:
@@ -250,6 +252,27 @@ def job_status(
     Status: QUEUED → PROCESSING → COMPLETED | FAILED
     """
     return handlers.handle_job_status(job_id=job_id, userstore=userstore)
+
+
+# ── Chatbot & Budgets ─────────────────────────────────────────────────────────
+
+class ChatBody(BaseModel):
+    message: str
+
+@app.post("/chat")
+def chat(
+    request: Request,
+    body: ChatBody,
+    x_user_id: Optional[str] = Header(default=None),
+) -> dict:
+    return handlers.handle_chat(_resolve_user_id(request, x_user_id), body.message, userstore, chatbot_client)
+
+@app.get("/budgets")
+def get_budgets(
+    request: Request,
+    x_user_id: Optional[str] = Header(default=None),
+) -> dict:
+    return handlers.handle_get_budgets(_resolve_user_id(request, x_user_id), userstore)
 
 
 # ── Transactions & Summary ────────────────────────────────────────────────────

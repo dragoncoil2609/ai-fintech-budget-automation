@@ -476,3 +476,21 @@ def handle_update_category(user_id: str, txn_id: int, new_category: str, usersto
 def handle_clear_transactions(user_id: str, userstore) -> dict:
     userstore.clear_transactions(user_id)
     return {"status": "success"}
+
+def handle_chat(user_id: str, message: str, userstore, chatbot_client) -> dict:
+    transactions = userstore.list_transactions(user_id)
+    budgets = userstore.get_budgets(user_id)
+    reply = chatbot_client.chat(user_id, message, transactions, budgets, userstore)
+    return {"reply": reply}
+
+def handle_get_budgets(user_id: str, userstore) -> dict:
+    budgets = userstore.get_budgets(user_id)
+    summary = userstore.summary(user_id)
+    
+    alerts = []
+    for category, limit in budgets.items():
+        spent = summary.get(category, {}).get("total", 0)
+        if spent > limit:
+            alerts.append({"category": category, "limit": limit, "spent": spent})
+            
+    return {"budgets": budgets, "alerts": alerts}

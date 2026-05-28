@@ -43,6 +43,19 @@ class DynamoDBUserStore:
     def summary(self, user_id: str, month: str | None = None) -> dict:
         return _aggregate(self.list_transactions(user_id, month))
 
+    def set_budget(self, user_id: str, category: str, amount: float) -> None:
+        from decimal import Decimal
+        sk = f"BUDGET#{category}"
+        self.table.put_item(Item={"user_id": user_id, "sk": sk, "category": category, "amount": Decimal(str(amount)), "updated_at": _now()})
+
+    def get_budgets(self, user_id: str) -> dict:
+        kwargs = {
+            "KeyConditionExpression": "user_id = :u AND begins_with(sk, :p)",
+            "ExpressionAttributeValues": {":u": user_id, ":p": "BUDGET#"},
+        }
+        resp = self.table.query(**kwargs)
+        return {item["category"]: float(item["amount"]) for item in resp.get("Items", [])}
+
 
 def _decimal_to_float(item: dict) -> dict:
     from decimal import Decimal
@@ -86,6 +99,13 @@ class PostgresUserStore:
                     error TEXT,
                     created_at TIMESTAMPTZ DEFAULT NOW(),
                     updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE TABLE IF NOT EXISTS budgets (
+                    user_id TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    amount NUMERIC(14,2) NOT NULL,
+                    updated_at TIMESTAMPTZ DEFAULT NOW(),
+                    PRIMARY KEY (user_id, category)
                 );
             """)
 
@@ -158,6 +178,22 @@ class PostgresUserStore:
                 (status, rows_inserted, error, job_id),
             )
 
+    def set_budget(self, user_id: str, category: str, amount: float) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO budgets (user_id, category, amount, updated_at)
+                VALUES (%s, %s, %s, NOW())
+                ON CONFLICT (user_id, category) DO UPDATE SET amount = EXCLUDED.amount, updated_at = NOW()
+                """,
+                (user_id, category, amount)
+            )
+
+    def get_budgets(self, user_id: str) -> dict:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT category, amount FROM budgets WHERE user_id = %s", (user_id,))
+            return {r[0]: float(r[1]) for r in cur.fetchall()}
+
 
 class SQLiteUserStore:
     def __init__(self, db_path: str):
@@ -190,6 +226,13 @@ class SQLiteUserStore:
                 error TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS budgets (
+                user_id TEXT NOT NULL,
+                category TEXT NOT NULL,
+                amount REAL NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, category)
             );
         """)
         self.conn.commit()
@@ -253,6 +296,21 @@ class SQLiteUserStore:
         )
         self.conn.commit()
 
+    def set_budget(self, user_id: str, category: str, amount: float) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO budgets (user_id, category, amount, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id, category) DO UPDATE SET amount=excluded.amount, updated_at=CURRENT_TIMESTAMP
+            """,
+            (user_id, category, float(amount))
+        )
+        self.conn.commit()
+
+    def get_budgets(self, user_id: str) -> dict:
+        cur = self.conn.execute("SELECT category, amount FROM budgets WHERE user_id = ?", (user_id,))
+        return {r[0]: r[1] for r in cur.fetchall()}
+
 
 def _aggregate(rows: list) -> dict:
     agg: dict = defaultdict(lambda: {"total": 0.0, "count": 0})
@@ -282,6 +340,8 @@ class DocumentDBUserStore:
         self.col = self.client[db_name]["transactions"]
         self.col.create_index([("user_id", 1), ("txn_date", -1)])
         self.col.create_index([("user_id", 1), ("category", 1)])
+        self.budget_col = self.client[db_name]["budgets"]
+        self.budget_col.create_index([("user_id", 1), ("category", 1)], unique=True)
 
     def add_transaction(self, user_id: str, txn: dict) -> None:
         self.col.insert_one({
@@ -306,6 +366,16 @@ class DocumentDBUserStore:
 
     def summary(self, user_id: str, month: str | None = None) -> dict:
         return _aggregate(self.list_transactions(user_id, month))
+
+    def set_budget(self, user_id: str, category: str, amount: float) -> None:
+        self.budget_col.update_one(
+            {"user_id": user_id, "category": category},
+            {"$set": {"amount": float(amount), "updated_at": _now()}},
+            upsert=True
+        )
+
+    def get_budgets(self, user_id: str) -> dict:
+        return {d["category"]: d["amount"] for d in self.budget_col.find({"user_id": user_id})}
 
 
 class MySQLUserStore:
@@ -342,7 +412,14 @@ class MySQLUserStore:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     INDEX idx_user_date (user_id, txn_date),
                     INDEX idx_user_cat (user_id, category)
-                ) CHARACTER SET utf8mb4
+                ) CHARACTER SET utf8mb4;
+                CREATE TABLE IF NOT EXISTS budgets (
+                    user_id VARCHAR(255) NOT NULL,
+                    category VARCHAR(64) NOT NULL,
+                    amount DECIMAL(14,2) NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (user_id, category)
+                ) CHARACTER SET utf8mb4;
             """)
 
     def add_transaction(self, user_id: str, txn: dict) -> None:
@@ -379,3 +456,19 @@ class MySQLUserStore:
         with self.conn.cursor() as cur:
             cur.execute(sql, params)
             return {r[0]: {"total": float(r[1]), "count": int(r[2])} for r in cur.fetchall()}
+
+    def set_budget(self, user_id: str, category: str, amount: float) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO budgets (user_id, category, amount)
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE amount = VALUES(amount)
+                """,
+                (user_id, category, float(amount))
+            )
+
+    def get_budgets(self, user_id: str) -> dict:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT category, amount FROM budgets WHERE user_id = %s", (user_id,))
+            return {r[0]: float(r[1]) for r in cur.fetchall()}

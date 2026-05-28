@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import './App.css'
 import AuthPage from './components/AuthPage.jsx'
+import Chatbot from './components/Chatbot.jsx'
 import { getCurrentToken, signOut, getUserEmail } from './auth/cognito.js'
 
 /* ────────────────────────────────────────────────────────────
@@ -232,6 +233,7 @@ export default function App() {
   const [alert, setAlert]           = useState(null)  // { type, msg }
   const [editTxn, setEditTxn]       = useState(null)
   const [clearing, setClearing]     = useState(false)
+  const [budgetAlerts, setBudgetAlerts] = useState([])
   const fileRef                     = useRef()
 
   const handleSignOut = () => {
@@ -256,15 +258,18 @@ export default function App() {
     setLoading(true)
     try {
       const q = m ? `?month=${m}` : ''
-      const [sumRes, txnRes] = await Promise.all([
+      const [sumRes, txnRes, budRes] = await Promise.all([
         authFetch(`${API_BASE}/summary${q}`),
         authFetch(`${API_BASE}/transactions${q}`),
+        authFetch(`${API_BASE}/budgets`),
       ])
       if (!sumRes.ok || !txnRes.ok) throw new Error('Không thể tải dữ liệu từ server')
       const sumData = await sumRes.json()
       const txnData = await txnRes.json()
+      const budData = budRes.ok ? await budRes.json() : { alerts: [] }
       setSummary(sumData)
       setTxns(txnData.transactions || [])
+      setBudgetAlerts(budData.alerts || [])
     } catch (e) {
       setAlert({ type: 'error', msg: e.message || 'Lỗi kết nối đến server' })
     } finally {
@@ -476,6 +481,16 @@ export default function App() {
           </div>
         )}
 
+        {/* Budget Alerts */}
+        {budgetAlerts.map((b_alert, idx) => (
+          <div key={idx} className="alert alert-danger budget-alert" style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.1), rgba(220,38,38,0.2))', border: '1px solid #ef4444' }}>
+            <span className="alert-icon">🔥</span>
+            <span>
+              <strong>CẢNH BÁO NGÂN SÁCH!</strong> Bạn đã chi <strong>{fmtVND(b_alert.spent)}</strong> cho <strong>{CATEGORY_VI[b_alert.category] || b_alert.category}</strong>, vượt quá giới hạn <strong>{fmtVND(b_alert.limit)}</strong>!
+            </span>
+          </div>
+        ))}
+
         {/* Upload zone */}
         <section className="upload-section">
           <div
@@ -681,6 +696,9 @@ export default function App() {
           onSave={handleSaveCategory}
         />
       )}
+
+      {/* Floating Chatbot */}
+      <Chatbot authFetch={authFetch} CATEGORY_VI={CATEGORY_VI} />
     </div>
   )
 }
