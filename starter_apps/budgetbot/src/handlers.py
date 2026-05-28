@@ -193,8 +193,8 @@ def _categorize_and_save(
     inserted = 0
     samples = []
 
-    # Gọi AI song song cho tất cả các dòng, tối đa 20 luồng cùng lúc.
-    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+    # Gọi AI song song cho tất cả các dòng, tối đa 5 luồng cùng lúc để tránh rate limit của AWS Bedrock.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         categorized_txns = list(executor.map(process_row, rows))
 
     # Lưu vào database tuần tự để tránh lỗi connection/thread-safety.
