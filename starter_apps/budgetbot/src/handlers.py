@@ -86,23 +86,20 @@ def _parse_pdf(data: bytes) -> list:
     return parsed
 
 
-def handle_upload(
+def _categorize_and_save(
     user_id: str,
     filename: str,
     data: bytes,
+    location: str,
     ai_client,
-    storage,
     userstore,
 ) -> dict:
-    """Parse CSV/PDF → categorize each row via AI → persist to userstore."""
-    key = f"{user_id}/{filename}"
-    location = storage.put(key, data)
-    
-    if filename.lower().endswith('.pdf'):
+    """Parse CSV/PDF → categorize mỗi row bằng AI → lưu vào userstore. Dùng chung cho cả upload trực tiếp và xử lý từ S3."""
+    if filename.lower().endswith(".pdf"):
         rows = _parse_pdf(data)
     else:
         rows = _parse_csv(data)
-        
+
     all_past = userstore.list_transactions(user_id)
     past_transactions = [t for t in all_past if t.get("confidence") == "high"]
 
@@ -122,17 +119,18 @@ def handle_upload(
 
     inserted = 0
     samples = []
-    
+
     # Gọi AI song song cho tất cả các dòng (tối đa 20 luồng cùng lúc)
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
         categorized_txns = list(executor.map(process_row, rows))
-        
+
     # Lưu vào database tuần tự để tránh lỗi quá tải hoặc xung đột connection (psycopg2 không thread-safe)
     for txn in categorized_txns:
         userstore.add_transaction(user_id, txn)
         inserted += 1
         if len(samples) < 5:
             samples.append(txn)
+
     return {
         "filename": filename,
         "stored_at": location,
@@ -140,6 +138,39 @@ def handle_upload(
         "rows_inserted": inserted,
         "sample_categorized": samples,
     }
+
+
+def handle_upload(
+    user_id: str,
+    filename: str,
+    data: bytes,
+    ai_client,
+    storage,
+    userstore,
+) -> dict:
+    """Parse CSV/PDF → categorize each row via AI → persist to userstore.
+    Đây là luồng upload cũ (file đi qua Lambda). Giữ nguyên để tương thích local dev và fallback.
+    """
+    key = f"{user_id}/{filename}"
+    location = storage.put(key, data)
+    return _categorize_and_save(user_id, filename, data, location, ai_client, userstore)
+
+
+def handle_process_from_s3(
+    user_id: str,
+    s3_key: str,
+    filename: str,
+    storage,
+    ai_client,
+    userstore,
+) -> dict:
+    """Đọc file đã upload lên S3 bằng presigned URL → categorize → lưu vào userstore.
+    Đây là bước 3 của luồng Presigned URL: Lambda không nhận payload file, chỉ nhận s3_key.
+    """
+    data = storage.get(s3_key)
+    location = f"s3://{s3_key}"
+    return _categorize_and_save(user_id, filename, data, location, ai_client, userstore)
+
 
 
 def handle_summary(user_id: str, month: Optional[str], userstore) -> dict:

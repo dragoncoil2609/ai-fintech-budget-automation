@@ -244,12 +244,48 @@ export default function App() {
     }
     setUploading(true)
     setAlert(null)
-    const form = new FormData()
-    form.append('file', file)
+
     try {
-      const res = await fetch(`${API_BASE}/upload`, { method: 'POST', body: form })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || 'Upload thất bại')
+      // Bước 1: Xin presigned URL từ backend
+      const reqRes = await fetch(`${API_BASE}/upload-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name }),
+      })
+      if (!reqRes.ok) {
+        const err = await reqRes.json().catch(() => ({}))
+        throw new Error(err.detail || 'Không thể tạo upload request')
+      }
+      const { upload_url, s3_key, fallback_to_multipart } = await reqRes.json()
+
+      let data
+
+      if (fallback_to_multipart || !upload_url) {
+        // Fallback: local dev — file vẫn đi qua /upload như cũ
+        const form = new FormData()
+        form.append('file', file)
+        const res = await fetch(`${API_BASE}/upload`, { method: 'POST', body: form })
+        data = await res.json()
+        if (!res.ok) throw new Error(data.detail || 'Upload thất bại')
+      } else {
+        // Bước 2: PUT file trực tiếp lên S3 (không qua Lambda)
+        const putRes = await fetch(upload_url, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: file,
+        })
+        if (!putRes.ok) throw new Error(`Upload lên S3 thất bại (HTTP ${putRes.status})`)
+
+        // Bước 3: Báo backend xử lý file từ S3
+        const processRes = await fetch(`${API_BASE}/process`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ s3_key, filename: file.name }),
+        })
+        data = await processRes.json()
+        if (!processRes.ok) throw new Error(data.detail || 'Xử lý file thất bại')
+      }
+
       const fallbackCount = (data.sample_categorized || []).filter(
         t => t.confidence === 'low-fallback'
       ).length

@@ -22,7 +22,11 @@ class Config:
 
     storage_backend: str = _env("STORAGE_BACKEND", "local")
     storage_bucket: str = _env("STORAGE_BUCKET", "")
-    storage_local_dir: str = _env("STORAGE_LOCAL_DIR", "./_data/uploads")
+    s3_bucket: str = _env("S3_BUCKET", "")
+    s3_presign_expiry: int = int(_env("S3_PRESIGN_EXPIRY", "900"))
+    max_upload_size: int = int(_env("MAX_UPLOAD_SIZE_MB", "50")) * 1024 * 1024  # bytes, default 50 MB
+    sqs_queue_url: str = _env("SQS_QUEUE_URL", "")
+
 
     userstore_backend: str = _env("USERSTORE_BACKEND", "sqlite")
     userstore_table: str = _env("USERSTORE_TABLE", "")

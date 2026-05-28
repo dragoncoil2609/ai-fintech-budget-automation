@@ -108,6 +108,34 @@ class S3Storage:
         )
         return [obj["Key"] for obj in resp.get("Contents", [])]
 
+    def generate_presigned_put(self, key: str, expiry: int = 900) -> str:
+        """Tạo presigned PUT URL để browser upload file trực tiếp lên S3 (không qua Lambda).
+
+        NOTE: Nếu frontend chạy trên domain khác bucket, cần cấu hình CORS trên S3 bucket:
+          AllowedMethods: [PUT], AllowedOrigins: ['*'] (hoặc domain cụ thể)
+        """
+        logger.info({
+            "event": "s3_presign_put_start",
+            "bucket": self.bucket,
+            "key": key,
+            "expiry": expiry,
+        })
+        url = self.s3.generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket": self.bucket,
+                "Key": key,
+                "ContentType": "application/octet-stream",
+            },
+            ExpiresIn=expiry,
+        )
+        logger.info({
+            "event": "s3_presign_put_created",
+            "bucket": self.bucket,
+            "key": key,
+        })
+        return url
+
 
 class LocalStorage:
     def __init__(self, base_dir: str):
@@ -128,3 +156,8 @@ class LocalStorage:
             str(p.relative_to(self.base))
             for p in self.base.rglob("*") if p.is_file() and str(p.relative_to(self.base)).startswith(prefix)
         ]
+
+    def generate_presigned_put(self, key: str, expiry: int = 900):
+        """LocalStorage không hỗ trợ presigned URL — trả về None để caller biết dùng fallback /upload."""
+        logger.info({"event": "local_storage_presigned_put_not_supported", "key": key})
+        return None

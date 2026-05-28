@@ -2,9 +2,13 @@
 from pathlib import Path
 from typing import Optional
 
+import boto3
+import uuid
+
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from .config import config
 from .adapters import factory
@@ -48,6 +52,8 @@ def _resolve_user_id(x_user_id: Optional[str]) -> str:
     return x_user_id or config.default_user_id
 
 
+# ── Health ────────────────────────────────────────────────────────────────────
+
 @app.get("/health")
 def health() -> dict:
     return {
@@ -60,13 +66,18 @@ def health() -> dict:
     }
 
 
+# ── Upload (legacy — file đi qua Lambda) ─────────────────────────────────────
+
 @app.post("/upload")
 async def upload(
     file: UploadFile = File(...),
     x_user_id: Optional[str] = Header(default=None),
 ) -> dict:
+    """Luồng upload cũ: file đi qua Lambda (multipart). Giữ nguyên cho local dev / fallback."""
     user_id = _resolve_user_id(x_user_id)
     data = await file.read()
+    if len(data) > config.max_upload_size:
+        raise HTTPException(status_code=413, detail=f"File too large (max {config.max_upload_size // 1024 // 1024} MB)")
     if not data:
         raise HTTPException(status_code=400, detail="Empty file")
     return handlers.handle_upload(
@@ -78,6 +89,78 @@ async def upload(
         userstore=userstore,
     )
 
+
+# ── Presigned URL upload (luồng mới — file đi thẳng lên S3) ──────────────────
+
+class UploadRequestBody(BaseModel):
+    filename: str
+
+
+@app.post("/upload-request")
+def upload_request(
+    body: UploadRequestBody,
+    x_user_id: Optional[str] = Header(default=None),
+) -> dict:
+    """Bước 1 của luồng Presigned URL:
+    Lambda tạo presigned PUT URL + s3_key và trả về cho frontend.
+    Frontend dùng URL đó để PUT file trực tiếp lên S3 (không qua Lambda).
+
+    Nếu storage backend không hỗ trợ presigned URL (ví dụ local dev),
+    trả về upload_url=null để frontend fallback về /upload.
+    """
+    user_id = _resolve_user_id(x_user_id)
+    filename = body.filename or "statement.csv"
+    s3_key = f"uploads/{user_id}/{uuid.uuid4()}/{filename}"
+    expiry = config.s3_presign_expiry
+
+    upload_url = storage.generate_presigned_put(key=s3_key, expiry=expiry)
+
+    return {
+        "upload_url": upload_url,          # None nếu local storage
+        "s3_key": s3_key,
+        "expires_in": expiry,
+        "method": "PUT",
+        "content_type": "application/octet-stream",
+        # Gợi ý cho frontend: nếu upload_url là null thì dùng /upload thay thế
+        "fallback_to_multipart": upload_url is None,
+    }
+
+
+class ProcessBody(BaseModel):
+    s3_key: str
+    filename: str
+
+
+@app.post("/process")
+def process(
+    body: ProcessBody,
+    x_user_id: Optional[str] = Header(default=None),
+) -> dict:
+    """Bước 3 của luồng Presigned URL:
+    Frontend đã upload file lên S3 thành công → gọi endpoint này để Lambda đọc
+    file từ S3 bằng s3_key, rồi phân loại giao dịch bằng AI và lưu vào DB.
+    Lambda không nhận payload file — chỉ nhận s3_key (chuỗi nhỏ).
+    """
+    user_id = _resolve_user_id(x_user_id)
+    if not body.s3_key:
+        raise HTTPException(status_code=400, detail="s3_key is required")
+    if not body.filename:
+        raise HTTPException(status_code=400, detail="filename is required")
+
+    try:
+        return handlers.handle_process_from_s3(
+            user_id=user_id,
+            s3_key=body.s3_key,
+            filename=body.filename,
+            storage=storage,
+            ai_client=ai_client,
+            userstore=userstore,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Lỗi xử lý file từ S3: {exc}") from exc
+
+
+# ── Transactions & Summary ────────────────────────────────────────────────────
 
 @app.get("/summary")
 def summary(
@@ -96,10 +179,9 @@ def transactions(
     return handlers.handle_list_transactions(_resolve_user_id(x_user_id), month, userstore)
 
 
-from pydantic import BaseModel
-
 class CategoryUpdate(BaseModel):
     category: str
+
 
 @app.patch("/transactions/{txn_id}")
 def update_category(
@@ -117,7 +199,7 @@ def clear_transactions(
     return handlers.handle_clear_transactions(_resolve_user_id(x_user_id), userstore)
 
 
-# ---- Static frontend ----
+# ── Static frontend ───────────────────────────────────────────────────────────
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 
@@ -128,6 +210,7 @@ if config.serve_frontend:
         if you deploy the frontend separately (CloudFront+S3, Amplify, ALB)."""
         return FileResponse(FRONTEND_DIR / "index.html")
 
-# AWS Lambda Handler
+
+# ── AWS Lambda Handler ────────────────────────────────────────────────────────
 if Mangum:
     handler = Mangum(app)
