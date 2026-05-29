@@ -279,9 +279,3 @@ Nhóm đã ghi lại toàn bộ hệ thống cảnh báo và biểu đồ giám 
 ![Báo động lỗi 5XX API](./image/5XX%20High%20Alarm.jpg)
 
 ---
-
----
-
-
-
-
