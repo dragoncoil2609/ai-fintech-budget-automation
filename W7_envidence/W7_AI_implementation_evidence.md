@@ -50,9 +50,7 @@ Thiết kế AI chính:
 
 **Chỗ dán screenshot:** Dashboard sau khi upload sao kê, có chart/category và transaction đã phân loại.
 
-```md
 ![AI dashboard overview](./image/ai-dashboard-overview.png)
-```
 
 ---
 
@@ -107,9 +105,7 @@ aws apigatewayv2 get-apis --region us-west-2 `
 ```
 
 
-```md
 ![CloudFront API routing](./image/ai-cloudfront-api-routing.png)
-```
 
 ---
 
@@ -163,9 +159,7 @@ aws lambda get-function-configuration --region us-west-2 `
 
 **Chỗ dán screenshot:** Lambda environment variables có `AI_BACKEND=bedrock`, `USERSTORE_BACKEND=postgres`, `STORAGE_BACKEND=s3`.
 
-```md
-![Lambda AI env](./image/ai-lambda-env.png)
-```
+> Ảnh cần bổ sung: `./image/ai-lambda-env.png`
 
 ---
 
@@ -203,9 +197,7 @@ aws rds describe-db-instances --region us-west-2 `
 
 **Chỗ dán screenshot:** RDS instance `budgetbot-db` status available, PostgreSQL, publicly accessible false.
 
-```md
 ![RDS PostgreSQL](./image/ai-rds-production.png)
-```
 
 ---
 
@@ -266,9 +258,7 @@ aws lambda list-event-source-mappings --region us-west-2 `
 
 **Chỗ dán screenshot:** SQS queue attributes hoặc Lambda trigger SQS.
 
-```md
 ![SQS event source](./image/ai-sqs-event-source.png)
-```
 
 ---
 
@@ -301,9 +291,7 @@ aws s3api get-bucket-location --bucket w7-budgetbot-upload-csv `
 
 **Chỗ dán screenshot:** S3 bucket `w7-budgetbot-upload-csv`, có prefix/file upload của sao kê.
 
-```md
 ![S3 upload bucket](./image/ai-s3-upload-bucket.png)
-```
 
 ---
 
@@ -522,9 +510,7 @@ except Exception as e:
 
 **Chỗ dán screenshot:** CloudWatch metric `BedrockCalls`, `BedrockLatencyMs`, hoặc `BedrockFailures`.
 
-```md
-![Bedrock latency metric](./image/ai-bedrock-latency-metric.png)
-```
+> Ảnh cần bổ sung: `./image/ai-bedrock-latency-metric.png`
 
 ---
 
@@ -596,11 +582,9 @@ if past_transactions:
 
 **Chỗ dán screenshot:** UI sửa category trong transaction table.
 
-```md
 ![User corrects category](./image/ai-user-correct-category.png)
 
 ![User corrects category](./image/ai-user-correct-category-1.png)
-```
 
 ---
 
@@ -692,9 +676,7 @@ def summary(self, user_id: str, month: str | None = None) -> dict:
 - Giảm hallucination trong domain tài chính.
 
 
-```md
-![AI chat food total](./image/ai-chat-food-question.png)
-```
+![AI chat food total](./image/i-chat-food-question.png)
 
 ---
 
@@ -824,9 +806,7 @@ Code frontend refresh dashboard sau khi chat kết thúc:
 
 **Chỗ dán screenshot:** Chat "Đặt ngân sách Ăn uống là 1 triệu" và dashboard hiện budget status/progress bar hoặc alert nếu đã vượt.
 
-```md
-![AI set budget tool](./image/ai-chat-set-budget.png)
-```
+> Ảnh cần bổ sung: `./image/ai-chat-set-budget.png`
 
 ---
 
@@ -856,15 +836,11 @@ instruct them to upload their bank statement (CSV or PDF).
 
 Câu hỏi ngoài domain, ví dụ "viết code sorting", bot từ chối và kéo về tài chính.
 
-```md
 ![AI domain guardrail](./image/ai-domain-guardrail.png)
-```
 
 Tài khoản chưa có transaction, bot hướng dẫn upload CSV/PDF.
 
-```md
 ![AI empty data handling](./image/ai-empty-data-handling.png)
-```
 
 ---
 
@@ -991,9 +967,7 @@ setSessionId(nextSessionId)
 
 Chat follow-up chứng minh bot nhớ ngữ cảnh, ví dụ nói mục tiêu tiết kiệm rồi hỏi lại "mục tiêu lúc nãy là gì?".
 
-```md
 ![AI chat memory follow-up](./image/ai-chat-memory-followup.png)
-```
 
 ---
 
@@ -1154,9 +1128,7 @@ Kết luận kỹ thuật:
 
 **Chỗ dán screenshot tuỳ chọn:** Bedrock customization job status `Stopped`, `customModelArn = null`.
 
-```md
-![Fine-tune stopped](./image/ai-finetune-stopped.png)
-```
+> Ảnh tuỳ chọn cần bổ sung: `./image/ai-finetune-stopped.png`
 
 ---
 
@@ -1179,9 +1151,7 @@ Dùng các case dưới đây để chứng minh classifier xử lý cả case d
 
 Terminal hoặc UI kết quả phân loại sau khi upload file test.
 
-```md
-![AI classification test](./image/ai-classification-test.png)
-```
+> Ảnh cần bổ sung: `./image/ai-classification-test.png`
 
 
 ## 12. Architectural Decisions
