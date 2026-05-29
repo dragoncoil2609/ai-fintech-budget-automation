@@ -1,0 +1,232 @@
+# W7 Evidence Pack — BudgetBot (FinTech: AI Money Coach)
+
+**Nhóm:** G4
+
+**Thành viên:**
+- Ngô Nguyễn Trường An (ngonguyentruongan2907@gmail.com)
+- Phạm Hữu Tiến Thành (tienthanh711204@gmail.com)
+- Nguyễn Huy Hoàng (nguyenvanhuyhoang2609@gmail.com)
+- Nguyễn Phú Tài (ddor2812@gmail.com)
+- Cái Xuân Hoà (xuanhoa2004tt@gmail.com)
+- Phan Hoàng Nhật (nhatphanhk102@gmail.com)
+
+**Live URL:** https://xbrain26hackathon269.software/
+**Repo link:** https://github.com/dragoncoil2609/w7-budgetbot.git
+**Domain choice:** Domain B — FinTech: "AI Money Coach"
+**Total spend:**
+
+---
+
+## 1. Lĩnh vực & Use Case
+
+### 1.1 Vấn đề cần giải quyết
+Sao kê ngân hàng đã mã hóa và nằm rải rác trên nhiều định dạng (PDF, CSV). Người dùng gặp khó khăn trong:
+- Phân loại giao dịch thủ công (tốn thời gian, dễ sai)
+- Hiểu được mô hình chi tiêu qua các tháng
+- Lập và theo dõi mục tiêu ngân sách
+- Trả lời "Tiền của tôi đã đi đâu?" mà không cần đối chiếu thủ công
+
+### 1.2 Giải pháp — BudgetBot
+**Tagline:** Tải lên sao kê của bạn. Hiểu chính xác tiền của bạn đã đi đâu.
+
+**Quy trình người dùng cơ bản:**
+1. Người dùng đăng nhập qua Cognito → lấy Token truy cập hệ thống.
+2. Tải lên sao kê (PDF hoặc CSV) qua S3 Presigned URL.
+3. Backend phân tích sao kê (xử lý bất đồng bộ qua SQS) → AI phân loại từng giao dịch.
+4. Dashboard hiển thị phân tích, theo dõi ngân sách, xu hướng chi tiêu.
+
+### 1.3 Lý do lựa chọn use case (Phân tích kỹ thuật)
+- **Bài toán Data Pipeline điển hình:** Luồng xử lý trích xuất dữ liệu thô từ file (S3) → phân loại bằng AI (Lambda + Bedrock) → lưu trữ có cấu trúc (RDS) là một kiến trúc chuẩn trong lĩnh vực xử lý dữ liệu, cho phép nhóm triển khai và tích hợp đồng thời nhiều dịch vụ cốt lõi của AWS.
+- **Đặc thù tải bùng phát (Burst Traffic) phù hợp với Serverless:** Hành vi người dùng cuối tháng thường tải lên sao kê đồng loạt, tạo ra mô hình traffic dạng spike. Đặc điểm này cho phép nhóm khai thác tối đa lợi thế Scale-to-Zero của Lambda (tối ưu chi phí khi rảnh) và cơ chế điều tiết tải bằng SQS (Anti-Spike) khi tải cao.
+- **Dữ liệu phi cấu trúc phù hợp với AI:** Sao kê ngân hàng tại Việt Nam thường không theo chuẩn thống nhất về định dạng và từ viết tắt. Việc áp dụng LLM (**Amazon Nova Lite 2** qua Bedrock) để phân loại tự động thay thế cho phương pháp Regex cứng nhắc là minh chứng cho ứng dụng AI thực tế trong bài toán xử lý dữ liệu tài chính.
+
+---
+
+## 2. Các Bước Triển Khai Dự Án (Deployment Pipeline)
+
+Dự án BudgetBot được triển khai theo 4 bước kiến trúc lớn để từ một MVP trở thành "Production-Ready":
+
+1.  **Thiết lập Hạ tầng Cơ sở (Infrastructure Base):**
+    *   **Mạng & Database:** Tạo VPC, thiết lập Private Subnet cho Database (Amazon RDS PostgreSQL) để đảm bảo cô lập mạng.
+    *   **Backend Compute:** Khởi tạo kho lưu trữ Amazon ECR (để chứa Docker Image của code Python) và cấu hình AWS Lambda chạy Container Image. Thiết lập HTTP API Gateway làm cổng giao tiếp.
+    *   **Frontend & Storage:** Tạo S3 Bucket cho Frontend, S3 Bucket cho upload sao kê gốc, và cấu hình CloudFront CDN để phân phối HTTPS.
+2.  **Tự động hóa CI/CD Pipeline:**
+    *   Thiết lập GitHub Actions. Mỗi khi code được push lên nhánh `main`:
+        *   Frontend: Tự động build React (Vite) và sync lên S3, clear cache CloudFront.
+        *   Backend: Build Docker Image, đẩy lên Amazon ECR, và cập nhật code cho AWS Lambda.
+    *   *(Hình ảnh bằng chứng: Ảnh chụp màn hình GitHub Actions báo Xanh/Success)*
+    *   ![CI/CD Pipeline Success](./image/cicd-success.png)
+3.  **Tối ưu luồng Upload File lớn (SQS + Presigned URL):**
+    *   Chuyển đổi từ luồng upload đồng bộ (qua Lambda) sang bất đồng bộ: Frontend xin **Presigned URL** từ Lambda, rồi đẩy file thẳng lên S3.
+    *   Sau khi upload S3 thành công, Frontend gọi API `/enqueue` để Lambda API đẩy một message chứa thông tin job vào hàng đợi **Amazon SQS**.
+    *   Cùng một Lambda đó (nhưng được SQS trigger với vai trò "Worker") sẽ kéo message từ hàng đợi để từ từ xử lý AI nền (gọi Bedrock), tránh bị timeout API Gateway 29s.
+4.  **Bảo mật Xác thực (Cognito + API Gateway):**
+    *   Tạo AWS Cognito User Pool.
+    *   Sử dụng script PowerShell (`setup_auth.ps1`) để gắn JWT Authorizer vào các route của HTTP API Gateway. Chỉ request có token hợp lệ mới được đi vào Lambda.
+    *   *(Hình ảnh bằng chứng: Ảnh chụp màn hình API Gateway có gắn JWT Authorizer)*
+    *   ![API Gateway JWT Authorizer](./image/api-gateway-authorizer.png)
+
+---
+
+## 3. Kiến trúc & 7 Khả năng Bắt buộc
+
+### 3.1 Sơ đồ kiến trúc logic
+
+*(Hình ảnh bằng chứng: Sơ đồ kiến trúc AWS chi tiết)*
+![Sơ đồ kiến trúc AWS](./image/architecture-diagram.png)
+
+### 3.2 Bảy khả năng bắt buộc (Must-Haves): Bước Thực Hiện & Lựa Chọn Service
+
+| # | Năng lực Bắt buộc | Dịch vụ & Bước thực hiện | Lý do (Trade-off & Bảo vệ phương án) |
+|---|---|---|---|
+| 1 | **User Interface** | **S3 + CloudFront + WAF:** Host tĩnh React trên S3, phân phối qua CloudFront có bật WAF. | Tối ưu chi phí (gần như $0). **CDN cache** tải trang siêu tốc. Gắn thêm **AWS WAF (Layer 7)** ở biên mạng (Edge) chặn đứng DDoS và SQL Injection ngay từ ngoài cửa. |
+| 2 | **Application Compute** | **AWS Lambda:** Dùng Lambda chạy Docker Image bọc FastAPI qua thư viện Mangum. | Chạy **Event-driven** và **Scale-to-Zero** giúp tiết kiệm tiền tối đa lúc không có khách. Dùng **Docker Image** giúp vượt giới hạn code 250MB để chạy thư viện xử lý PDF phức tạp. |
+| 3 | **AI / ML Feature** | **Bedrock (Nova):** Dùng InvokeModel (Amazon Nova Lite 2) với ThreadPoolExecutor (20 luồng). | **Kiến trúc Hybrid:** Lọc rule-based cục bộ trước, từ nào khó mới gọi AI để **tiết kiệm 80% phí token**. Nova Lite 2 siêu rẻ và có tốc độ xử lý cực nhanh. |
+| 4 | **Data Persistence** | **RDS PostgreSQL:** Triển khai Single-AZ với dòng chip t4g siêu rẻ. | **Tối ưu chi phí:** Nhóm đã cấu hình Single-AZ để đảm bảo chi phí thấp nhất trong môi trường Hackathon. Riêng RDS Proxy bị tài khoản Free Tier cấm tạo, nhóm lập tức đổi chiến thuật: Dùng **SQS Buffer** thay thế Proxy để điều tiết luồng ghi, triệt tiêu Connection Spike hoàn hảo. |
+| 5 | **Object Storage** | **S3 Bucket:** Lưu sao kê gốc. Áp dụng cơ chế Presigned URL. | S3 là kho lưu trữ Object hoàn hảo. **Presigned URL** cho phép khách hàng upload thẳng file GB lên S3 mà không bị giới hạn 6MB payload của API Gateway. |
+| 6 | **Network Foundation** | **VPC (Private RDS):** Đặt DB vào Private Subnet. Dùng VPC Interface Endpoint. | Cô lập hoàn toàn DB khỏi Internet. Việc dùng **VPC Interface Endpoint** gọi nội bộ tới Bedrock thay vì dùng NAT Gateway giúp **tiết kiệm ~$1.08/ngày**. |
+| 7 | **Identity & Access** | **Cognito + IAM:** Gắn JWT Authorizer vào API Gateway, IAM Least-Privilege. | **Edge Security (Bảo mật tại cổng):** Cognito chặn request mạo danh ngay tại API Gateway, Lambda không bị đánh thức, **tiết kiệm 100% compute** cho request rác. |
+
+### 3.2.1 Chi tiết triển khai kỹ thuật
+
+Dưới đây là chi tiết luồng hoạt động kỹ thuật và các quyết định thiết kế cho 7 thành phần của hệ thống:
+
+1. **User Interface (Giao diện người dùng):** Mã nguồn React được build thành các tệp tĩnh và lưu trữ trên Amazon S3. AWS CloudFront được sử dụng làm CDN để phân phối nội dung, giúp tối ưu thời gian tải trang. Việc tích hợp **AWS WAF** với CloudFront cung cấp lớp bảo vệ Layer 7, hỗ trợ ngăn chặn các rủi ro bảo mật như DDoS hoặc SQL Injection ở cấp độ mạng biên.
+2. **Application Compute (Xử lý cốt lõi):** Việc chạy ứng dụng FastAPI trên Lambda đối mặt với giới hạn kích thước gói code (250MB) do các thư viện xử lý PDF có dung lượng lớn. Nhóm đã giải quyết bằng cách đóng gói ứng dụng thành **Docker Container Image** và lưu trữ tại Amazon ECR. Thư viện `Mangum` được sử dụng để chuyển đổi request từ API Gateway sang chuẩn ASGI tương thích với FastAPI. Cơ chế Scale-to-Zero của Lambda giúp tối ưu chi phí khi không có lưu lượng truy cập.
+3. **AI / ML Feature (Trí tuệ nhân tạo):** Để hạn chế chi phí và thời gian xử lý do số lượng lớn giao dịch, nhóm thiết kế một **Kiến trúc Hybrid**: Bộ lọc Rule-based (Regex) tại Lambda sẽ quét và phân loại các giao dịch cơ bản trước. Chỉ những giao dịch không thể xác định bằng luật mới được đẩy qua `ThreadPoolExecutor` để xử lý song song thông qua Bedrock (Amazon Nova Lite 2). Kiến trúc này giúp giảm thiểu đáng kể lượng Token cần sử dụng cho LLM.
+4. **Data Persistence (Lưu trữ dữ liệu):** Để tối ưu hóa chi phí cho môi trường Hackathon, nhóm đã cấu hình **RDS PostgreSQL Single-AZ** trên dòng chip ARM t4g.micro để cân bằng giữa hiệu năng và chi phí. Để giải quyết nguy cơ quá tải kết nối (Connection Spike) khi Lambda scale up (do tài khoản Free Tier không hỗ trợ RDS Proxy), nhóm đã sử dụng **Amazon SQS** làm buffer để điều tiết tốc độ ghi dữ liệu xuống Database một cách an toàn. Trong tương lai, hệ thống có thể nâng cấp lên Multi-AZ cực kỳ dễ dàng khi cần đảm bảo tính sẵn sàng cao.
+5. **Object Storage (Lưu trữ tệp lớn):** Tải file PDF sao kê dung lượng lớn qua API Gateway sẽ bị lỗi do giới hạn payload 10MB. Nhóm thiết kế luồng sử dụng **S3 Presigned URL**. Frontend gọi API Lambda để cấp một URL có thời hạn, sau đó upload file trực tiếp lên S3. Giải pháp này giúp tránh giới hạn của API Gateway và giảm tải băng thông cho Backend.
+6. **Network Foundation (Hạ tầng mạng):** Amazon RDS được đặt trong Private Subnet, cách ly khỏi Internet. Để Lambda trong Private Subnet có thể giao tiếp với API của Amazon Bedrock mà không cần sử dụng NAT Gateway, nhóm đã thiết lập **VPC Interface Endpoint (PrivateLink)**, cho phép kết nối nội bộ qua mạng AWS Backbone.
+7. **Identity & Access (Định danh & Truy cập):** Hệ thống sử dụng Amazon Cognito để quản lý người dùng và cấp JSON Web Token (JWT). API Gateway được cấu hình với JWT Authorizer để chặn các request không có token hợp lệ ngay từ vòng ngoài (trả về 401 Unauthorized). Điều này giúp tiết kiệm tài nguyên tính toán do Lambda không phải xử lý các request bất hợp pháp.
+
+### 3.3 Bằng chứng cấu hình (AWS Console Screenshots)
+
+Để chứng minh hệ thống thực sự được triển khai theo đúng chuẩn, dưới đây là các hình ảnh chụp thực tế từ AWS Console:
+
+*(Lưu ý: Đổi tên ảnh tương ứng và đưa vào thư mục `image`)*
+
+**1. Bằng chứng hạ tầng mạng & Compute (VPC Endpoints & Lambda):**
+![Bằng chứng VPC và Lambda](./image/evidence-vpc-lambda.png)
+
+**2. Bằng chứng Database (RDS Single-AZ):**
+![Bằng chứng RDS](./image/evidence-rds.png)
+
+**3. Bằng chứng Frontend (CloudFront & S3):**
+![Bằng chứng CloudFront](./image/evidence-cloudfront.png)
+
+---
+
+## 4. Các quyết định kiến trúc chính (Chống sập & Giảm tải)
+
+### 4.1 Xử lý Upload File Lớn: SQS Async vs. Đồng bộ (Sync)
+- **Quyết định:** Chuyển từ luồng Upload gọi API trực tiếp sang cấu trúc Bất đồng bộ (S3 Presigned URL + SQS Queue).
+- **Lý do & Tác dụng Giảm tải:** 
+  - **Tránh Timeout:** API Gateway có giới hạn cứng 29 giây. Xử lý file lớn hàng nghìn dòng bằng AI chắc chắn vượt 29s gây sập API.
+  - **Buffer giảm tải (Anti-Spike):** SQS làm hàng đợi trung gian (buffer). Dù 1000 user upload file cùng lúc, SQS sẽ từ từ "nhỏ giọt" message xuống Lambda Worker. 
+  - **Chịu tải vô cực:** DB RDS không bị bùng nổ kết nối (Connection Spike), API không bao giờ timeout. Đảm bảo trải nghiệm êm mượt mà không phải scale phần cứng tốn tiền.
+
+![Bằng chứng SQS Queues](./image/evidence-sqs-queues.png)
+
+### 4.2 Lựa chọn DB: RDS PostgreSQL vs. DynamoDB
+- **Lý do:** BudgetBot cần Query phân tích phức tạp. DynamoDB tuy không có cold-start nhưng giới hạn về query phân tích. Nhóm triển khai **Single-AZ trên chip ARM t4g.micro** để tối ưu triệt để chi phí trong giai đoạn Hackathon, trong khi vẫn đảm bảo năng lực thống kê báo cáo mạnh mẽ từ cơ sở dữ liệu quan hệ.
+
+### 4.3 Bảo mật tại cổng (Edge Security): WAF + Cognito
+- **Quyết định:** Không để phần backend (Lambda) tự lo bảo mật. Chuyển toàn bộ trọng trách phòng thủ ra lớp biên mạng (Edge Layer).
+- **Lý do & Tác dụng Giảm tải:** 
+  - **AWS WAF (gắn tại CloudFront):** Chặn đứng các đòn tấn công phổ biến (DDoS, SQL Injection) và giới hạn Rate Limiting ngay từ "ngoài cửa".
+  - **Cognito JWT Authorizer (gắn tại API Gateway):** Từ chối ngay lập tức các request mạo danh, không có token hợp lệ.
+  - **Kết quả:** Thay vì để Request rác lọt vào trong đánh thức Lambda (gây tốn tiền Compute vô ích), kiến trúc này tiêu diệt hiểm họa từ vòng gửi xe. **Tiết kiệm 100% chi phí xử lý request rác!**
+
+### 4.4 Lựa chọn Compute: Lambda vs. ECS vs. EC2
+
+- **Phương án đã cân nhắc:**
+
+  | Tiêu chí | **AWS Lambda** *(Chọn)* | ECS Fargate | EC2 |
+  |---|---|---|---|
+  | Chi phí khi không có traffic | **$0** (Scale-to-Zero) | ~$1.5/ngày (task chạy liên tục) | ~$2-5/ngày (instance luôn chạy) |
+  | Thời gian setup | **Thấp** | Trung bình (cần cluster, task def.) | Cao (cần provision, patch OS) |
+  | Quản lý hạ tầng | **Không cần** | Một phần | Toàn bộ |
+  | Phù hợp tải Hackathon | **Rất cao** | Trung bình | Thấp |
+
+- **Lý do quyết định chọn Lambda:**
+  1. **Tối ưu chi phí tuyệt đối cho môi trường Hackathon:** Hệ thống chỉ phát sinh chi phí compute khi thực sự có request. Trong 48H, phần lớn thời gian không có traffic → ECS/EC2 sẽ lãng phí ngân sách.
+  2. **Xử lý Docker Image:** Nhóm đóng gói FastAPI thành Docker Container để vượt giới hạn code 250MB, đồng thời tận dụng khả năng Scale-to-Zero mà ECS không có.
+  3. **Tích hợp Event-driven tự nhiên:** Lambda kết nối trực tiếp với SQS Trigger — mỗi message trong hàng đợi tự động kích hoạt một Lambda Worker độc lập mà không cần code orchestration phức tạp như ECS Tasks.
+
+---
+
+## 5. Các Bước Hoàn Thành Bonus (Điểm Cộng)
+
+1.  **[B] CI/CD Pipeline (Tự động hóa toàn diện):**
+    *   **Bước thực hiện:** Viết Github Actions workflow. Pipeline bao gồm: Docker build -> ECR Push -> Lambda Update -> Node.js build -> S3 Sync -> CloudFront Invalidation.
+    *   **Tác dụng:** Giảm thời gian release tính năng từ 15 phút làm thủ công xuống còn ~47 giây.
+2.  **[C] Custom Domain + HTTPS (Giao diện chuyên nghiệp):**
+    *   **Bước thực hiện:** Đăng ký tên miền `xbrain26hackathon269.software` trên Route 53. Xin chứng chỉ miễn phí AWS ACM và gắn vào CloudFront.
+    *   **Tác dụng:** Ứng dụng live với tên miền chuyên nghiệp, có ổ khóa xanh HTTPS đảm bảo an toàn.
+    *   ![Bằng chứng ACM Certificate](./image/evidence-acm.png)
+3.  **[G] Cost Optimization (Tối ưu hóa và giám sát chi phí):**
+    *   **Bước thực hiện:** (1) Dùng mô hình Amazon Nova Lite 2 thay vì các mô hình đắt tiền. (2) SQS bất đồng bộ chống nâng memory Lambda. (3) Dùng VPC Endpoint thay NAT. (4) Cấu hình Cost Anomaly Detection (ngưỡng >$10).
+    *   **Tác dụng:** Chi phí thấp kỷ lục, không sợ hóa đơn đột biến.
+4.  **[O] Full Observability (Giám sát toàn diện hệ thống):**
+    *   **Bước thực hiện:** Xây dựng **CloudWatch Dashboard** cho API (5XX, Latency), Lambda (Errors), SQS (Oldest Message), RDS (Connections) và Custom Metrics.
+
+---
+
+## 6. Phân tích chi phí (Bonus #9 - Advanced Cost Insights)
+
+### 6.1 Chi phí thực tế 48H
+
+- **Ngân sách tối đa:** $100
+- **Chi phí thực tế 48H (từ Cost Explorer):** ~$5.60 — đạt mức **tối ưu chi phí**, chỉ bằng 5.6% ngân sách tối đa.
+- **Top 3 Cost Drivers (Group by Tag):**
+  - **Hạ tầng mạng (`hackathon-vpc`):** ~$1.35 (Chi phí VPC, Subnet, Network Interface — cố định bất kể traffic).
+  - **VPC Interface Endpoints (`vpce-bedrock`, `hackathon-vpce-bedrock`, `budgetbot-secrets-endpoint`):** ~$0.54 tổng (3 endpoints × ~$0.18). Rẻ hơn đáng kể so với việc dùng NAT Gateway ~$2.16/48h.
+  - **RDS Single-AZ:** ~$3.80 (Chi phí lớn nhất — đây là chi phí vận hành cần thiết cho cơ sở dữ liệu quan hệ, cung cấp năng lực phân tích báo cáo và bảo mật dữ liệu cho hệ thống tài chính).
+- **Ghi chú:** AWS Learner Lab Credit đã được áp dụng, giá trị offset hiển thị trong mục "No tag key: Name" trên Cost Explorer.
+
+### 6.2 Bằng chứng AWS Cost Explorer
+![AWS Cost Explorer](./image/evidence-cost-explorer.png)
+
+
+---
+
+## 7. Triển khai Bảo mật (Security First)
+
+1. **IAM Least-Privilege:** Không dùng wildcard hay Admin. Lambda role được scope nhỏ nhặt đến mức từng bucket name và model ARN.
+2. **Edge Security (Bảo mật biên mạng):** Kết hợp chặt chẽ **AWS WAF** và **Cognito JWT Authorizer** để chặn đứng DDoS, SQL Injection và các request nặc danh ngay tại lớp ngoài cùng (CloudFront & API Gateway), bảo vệ tuyệt đối cho Backend bên trong.
+3. **Mạng lưới kín (VPC):** RDS không Public IP. Dữ liệu chạy nội bộ qua AWS Backbone network bằng VPC Endpoint.
+
+---
+
+## 8. Giám sát Toàn diện (Full Observability - Bonus #8)
+
+Hệ thống BudgetBot đã chuyển từ "chạy mù" sang "có thể quan sát 360 độ" bằng **CloudWatch Dashboard**:
+
+### 8.1 Bắt lỗi hệ thống (Infrastructure Alarms)
+- **API Gateway & Lambda:** Cảnh báo khi API lỗi 5XX, độ trễ cao, hoặc Lambda sắp hết giờ (Duration near timeout).
+- **SQS & Dead-Letter Queue (DLQ):** Theo dõi `ApproximateAgeOfOldestMessage` để bắt Job kẹt > 5 phút. Nếu Job chết sau nhiều lần retry, nó rơi vào thùng rác DLQ và báo động ngay.
+- **RDS:** Báo động khi Connection DB lên quá cao, chống sập.
+
+### 8.2 Bắt lỗi nghiệp vụ (Custom Metrics)
+- Bắn trực tiếp các thông số nghiệp vụ từ Lambda (Namespace: **BudgetBot/W7**) như: `UploadJobCreated`, `UploadJobFailed`, `RowsParsed`, `RowsInserted`. Giúp ban quản trị lập tức biết ứng dụng có đang xử lý tốt file của khách hàng không.
+
+### 8.3 Bằng chứng Giám sát (AWS Console Screenshots)
+
+Nhóm đã ghi lại toàn bộ hệ thống cảnh báo và biểu đồ giám sát thực tế trên CloudWatch:
+
+**1. Tổng quan CloudWatch Dashboard & Custom Metrics (Lỗi nghiệp vụ):**
+![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.jpg)
+![Custom Metrics](./image/Custom%20metrics.jpg)
+
+**2. Cảnh báo lỗi hệ thống (Infrastructure Alarms):**
+![Báo động kẹt SQS DLQ](./image/DLQ%20has%20messages.jpg)
+![Báo động quá tải Database](./image/DatabaseConnections.jpg)
+![Báo động lỗi 5XX API](./image/5XX%20High%20Alarm.jpg)
+
+---
+
+---
+
+
+
+

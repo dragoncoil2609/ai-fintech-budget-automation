@@ -17,12 +17,17 @@ def _env(name: str, default: str = "") -> str:
 @dataclass(frozen=True)
 class Config:
     ai_backend: str = _env("AI_BACKEND", "local")
-    ai_model_id: str = _env("AI_MODEL_ID", "anthropic.claude-3-5-haiku-20241022-v1:0")
+    ai_model_id: str = _env("AI_MODEL_ID", "us.amazon.nova-2-lite-v1:0")
     aws_region: str = _env("AWS_REGION") or _env("AWS_REGION_NAME") or "us-west-2"
 
     storage_backend: str = _env("STORAGE_BACKEND", "local")
     storage_bucket: str = _env("STORAGE_BUCKET", "")
-    storage_local_dir: str = _env("STORAGE_LOCAL_DIR", "./_data/uploads")
+    storage_local_dir: str = _env("STORAGE_LOCAL_DIR", "data/uploads")
+    s3_bucket: str = _env("S3_BUCKET", "")
+    s3_presign_expiry: int = int(_env("S3_PRESIGN_EXPIRY", "900"))
+    max_upload_size: int = int(_env("MAX_UPLOAD_SIZE_MB", "50")) * 1024 * 1024  # bytes, default 50 MB
+    sqs_queue_url: str = _env("SQS_QUEUE_URL", "")
+
 
     userstore_backend: str = _env("USERSTORE_BACKEND", "sqlite")
     userstore_table: str = _env("USERSTORE_TABLE", "")

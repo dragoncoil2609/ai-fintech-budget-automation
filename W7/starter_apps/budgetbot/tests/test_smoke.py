@@ -14,7 +14,8 @@ os.environ["USERSTORE_SQLITE_PATH"] = str(Path(_tmp) / "transactions.db")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi.testclient import TestClient
-from src.app import app
+import src.app as app_module
+from src.app import app, userstore
 
 
 client = TestClient(app)
@@ -90,3 +91,45 @@ def test_transactions_isolated_per_user():
     r_b = client.get("/transactions", headers={"X-User-Id": "user-iso-B"})
     assert len(r_a.json()["transactions"]) == 4
     assert len(r_b.json()["transactions"]) == 0
+
+
+def test_chat_memory_recent_messages_are_isolated_per_user():
+    userstore.get_or_create_chat_session("chat-user-a", "session-a")
+    userstore.add_chat_message("chat-user-a", "session-a", "user", "Tôi muốn tiết kiệm 5 triệu mỗi tháng")
+    userstore.add_chat_message("chat-user-a", "session-a", "assistant", "Mình sẽ ghi nhớ mục tiêu đó.")
+
+    userstore.get_or_create_chat_session("chat-user-b", "session-b")
+    userstore.add_chat_message("chat-user-b", "session-b", "user", "Tôi muốn giảm ăn ngoài")
+
+    recent_a = userstore.list_recent_chat_messages("chat-user-a", "session-a", limit=8)
+    recent_b = userstore.list_recent_chat_messages("chat-user-b", "session-b", limit=8)
+
+    assert [m["role"] for m in recent_a] == ["user", "assistant"]
+    assert "5 triệu" in recent_a[0]["text"]
+    assert len(recent_b) == 1
+    assert "ăn ngoài" in recent_b[0]["text"]
+
+
+def test_chat_endpoint_persists_server_side_memory(monkeypatch):
+    class FakeChatbot:
+        def chat(self, **kwargs):
+            assert kwargs["messages_context"][-1]["text"] == "Nhớ giúp tôi mục tiêu tiết kiệm"
+            yield "Đã ghi nhớ mục tiêu của bạn."
+
+        def summarize_memory(self, existing_summary, messages):
+            return existing_summary
+
+    monkeypatch.setattr(app_module, "chatbot_client", FakeChatbot())
+
+    r = client.post(
+        "/chat",
+        json={"message": "Nhớ giúp tôi mục tiêu tiết kiệm", "session_id": "local-session"},
+        headers={"X-User-Id": "memory-user"},
+    )
+
+    assert r.status_code == 200, r.text
+    assert "Đã ghi nhớ" in r.text
+
+    recent = userstore.list_recent_chat_messages("memory-user", "memory-user:local-session", limit=8)
+    assert [m["role"] for m in recent] == ["user", "assistant"]
+    assert "mục tiêu tiết kiệm" in recent[0]["text"]
