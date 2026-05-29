@@ -82,7 +82,7 @@ Dự án BudgetBot được triển khai theo 4 bước kiến trúc lớn để
 | 1 | **User Interface** | **S3 + CloudFront + WAF:** Host tĩnh React trên S3, phân phối qua CloudFront có bật WAF. | Tối ưu chi phí (gần như $0). **CDN cache** tải trang siêu tốc. Gắn thêm **AWS WAF (Layer 7)** ở biên mạng (Edge) chặn đứng DDoS và SQL Injection ngay từ ngoài cửa. |
 | 2 | **Application Compute** | **AWS Lambda:** Dùng Lambda chạy Docker Image bọc FastAPI qua thư viện Mangum. | Chạy **Event-driven** và **Scale-to-Zero** giúp tiết kiệm tiền tối đa lúc không có khách. Dùng **Docker Image** giúp vượt giới hạn code 250MB để chạy thư viện xử lý PDF phức tạp. |
 | 3 | **AI / ML Feature** | **Bedrock (Nova):** Dùng InvokeModel (Amazon Nova Lite 2) với ThreadPoolExecutor (20 luồng). | **Kiến trúc Hybrid:** Lọc rule-based cục bộ trước, từ nào khó mới gọi AI để **tiết kiệm 80% phí token**. Nova Lite 2 siêu rẻ và có tốc độ xử lý cực nhanh. |
-| 4 | **Data Persistence** | **RDS PostgreSQL:** Triển khai Single-AZ với dòng chip t4g siêu rẻ. | **Tối ưu chi phí:** Nhóm đã cấu hình Single-AZ để đảm bảo chi phí thấp nhất trong môi trường Hackathon. Riêng RDS Proxy bị tài khoản Free Tier cấm tạo, nhóm lập tức đổi chiến thuật: Dùng **SQS Buffer** thay thế Proxy để điều tiết luồng ghi, triệt tiêu Connection Spike hoàn hảo. |
+| 4 | **Data Persistence** | **RDS PostgreSQL:** Single-AZ (Primary) + Read Replica ở AZ khác. | **Đánh đổi tối ưu:** Kết hợp cấu hình Single-AZ cho Primary để giảm chi phí, nhưng vẫn tạo 1 Read Replica ở AZ khác để chia tải đọc và dự phòng. Giải quyết Connection Spike bằng **SQS Buffer** thay thế RDS Proxy (bị cấm ở tài khoản Free Tier). |
 | 5 | **Object Storage** | **S3 Bucket:** Lưu sao kê gốc. Áp dụng cơ chế Presigned URL. | S3 là kho lưu trữ Object hoàn hảo. **Presigned URL** cho phép khách hàng upload thẳng file GB lên S3 mà không bị giới hạn 6MB payload của API Gateway. |
 | 6 | **Network Foundation** | **VPC (Private RDS):** Đặt DB vào Private Subnet. Dùng VPC Interface Endpoint. | Cô lập hoàn toàn DB khỏi Internet. Việc dùng **VPC Interface Endpoint** gọi nội bộ tới Bedrock thay vì dùng NAT Gateway giúp **tiết kiệm ~$1.08/ngày**. |
 | 7 | **Identity & Access** | **Cognito + IAM:** Gắn JWT Authorizer vào API Gateway, IAM Least-Privilege. | **Edge Security (Bảo mật tại cổng):** Cognito chặn request mạo danh ngay tại API Gateway, Lambda không bị đánh thức, **tiết kiệm 100% compute** cho request rác. |
@@ -94,7 +94,7 @@ Dưới đây là chi tiết luồng hoạt động kỹ thuật và các quyế
 1. **User Interface (Giao diện người dùng):** Mã nguồn React được build thành các tệp tĩnh và lưu trữ trên Amazon S3. AWS CloudFront được sử dụng làm CDN để phân phối nội dung, giúp tối ưu thời gian tải trang. Việc tích hợp **AWS WAF** với CloudFront cung cấp lớp bảo vệ Layer 7, hỗ trợ ngăn chặn các rủi ro bảo mật như DDoS hoặc SQL Injection ở cấp độ mạng biên.
 2. **Application Compute (Xử lý cốt lõi):** Việc chạy ứng dụng FastAPI trên Lambda đối mặt với giới hạn kích thước gói code (250MB) do các thư viện xử lý PDF có dung lượng lớn. Nhóm đã giải quyết bằng cách đóng gói ứng dụng thành **Docker Container Image** và lưu trữ tại Amazon ECR. Thư viện `Mangum` được sử dụng để chuyển đổi request từ API Gateway sang chuẩn ASGI tương thích với FastAPI. Cơ chế Scale-to-Zero của Lambda giúp tối ưu chi phí khi không có lưu lượng truy cập.
 3. **AI / ML Feature (Trí tuệ nhân tạo):** Để hạn chế chi phí và thời gian xử lý do số lượng lớn giao dịch, nhóm thiết kế một **Kiến trúc Hybrid**: Bộ lọc Rule-based (Regex) tại Lambda sẽ quét và phân loại các giao dịch cơ bản trước. Chỉ những giao dịch không thể xác định bằng luật mới được đẩy qua `ThreadPoolExecutor` để xử lý song song thông qua Bedrock (Amazon Nova Lite 2). Kiến trúc này giúp giảm thiểu đáng kể lượng Token cần sử dụng cho LLM.
-4. **Data Persistence (Lưu trữ dữ liệu):** Để tối ưu hóa chi phí cho môi trường Hackathon, nhóm đã cấu hình **RDS PostgreSQL Single-AZ** trên dòng chip ARM t4g.micro để cân bằng giữa hiệu năng và chi phí. Để giải quyết nguy cơ quá tải kết nối (Connection Spike) khi Lambda scale up (do tài khoản Free Tier không hỗ trợ RDS Proxy), nhóm đã sử dụng **Amazon SQS** làm buffer để điều tiết tốc độ ghi dữ liệu xuống Database một cách an toàn. Trong tương lai, hệ thống có thể nâng cấp lên Multi-AZ cực kỳ dễ dàng khi cần đảm bảo tính sẵn sàng cao.
+4. **Data Persistence (Lưu trữ dữ liệu):** Nhằm cân bằng giữa tính sẵn sàng cao và tối ưu chi phí, nhóm đã triển khai cấu hình **Single-AZ (Primary) trên chip ARM t4g.micro** kết hợp với **1 Read Replica ở AZ khác** (thực hiện sao chép bất đồng bộ). Thiết kế này giúp bảo vệ dữ liệu và chia sẻ tải đọc mà không tốn chi phí đồng bộ đắt đỏ của Multi-AZ truyền thống. Để giải quyết nguy cơ quá tải kết nối (Connection Spike) khi Lambda scale up (do tài khoản Free Tier không hỗ trợ RDS Proxy), nhóm đã sử dụng **Amazon SQS** làm buffer để điều tiết tốc độ ghi dữ liệu xuống Database một cách an toàn.
 5. **Object Storage (Lưu trữ tệp lớn):** Tải file PDF sao kê dung lượng lớn qua API Gateway sẽ bị lỗi do giới hạn payload 10MB. Nhóm thiết kế luồng sử dụng **S3 Presigned URL**. Frontend gọi API Lambda để cấp một URL có thời hạn, sau đó upload file trực tiếp lên S3. Giải pháp này giúp tránh giới hạn của API Gateway và giảm tải băng thông cho Backend.
 6. **Network Foundation (Hạ tầng mạng):** Amazon RDS được đặt trong Private Subnet, cách ly khỏi Internet. Để Lambda trong Private Subnet có thể giao tiếp với API của Amazon Bedrock mà không cần sử dụng NAT Gateway, nhóm đã thiết lập **VPC Interface Endpoint (PrivateLink)**, cho phép kết nối nội bộ qua mạng AWS Backbone.
 7. **Identity & Access (Định danh & Truy cập):** Hệ thống sử dụng Amazon Cognito để quản lý người dùng và cấp JSON Web Token (JWT). API Gateway được cấu hình với JWT Authorizer để chặn các request không có token hợp lệ ngay từ vòng ngoài (trả về 401 Unauthorized). Điều này giúp tiết kiệm tài nguyên tính toán do Lambda không phải xử lý các request bất hợp pháp.
@@ -108,7 +108,7 @@ Dưới đây là chi tiết luồng hoạt động kỹ thuật và các quyế
 **1. Bằng chứng hạ tầng mạng & Compute (VPC Endpoints & Lambda):**
 ![Bằng chứng VPC và Lambda](./image/evidence-vpc-lambda.png)
 
-**2. Bằng chứng Database (RDS Single-AZ):**
+**2. Bằng chứng Database (RDS Single-AZ + Read Replica):**
 ![Bằng chứng RDS](./image/evidence-rds.png)
 
 **3. Bằng chứng Frontend (CloudFront & S3):**
@@ -128,7 +128,7 @@ Dưới đây là chi tiết luồng hoạt động kỹ thuật và các quyế
 ![Bằng chứng SQS Queues](./image/evidence-sqs-queues.png)
 
 ### 4.2 Lựa chọn DB: RDS PostgreSQL vs. DynamoDB
-- **Lý do:** BudgetBot cần Query phân tích phức tạp. DynamoDB tuy không có cold-start nhưng giới hạn về query phân tích. Nhóm triển khai **Single-AZ trên chip ARM t4g.micro** để tối ưu triệt để chi phí trong giai đoạn Hackathon, trong khi vẫn đảm bảo năng lực thống kê báo cáo mạnh mẽ từ cơ sở dữ liệu quan hệ.
+- **Lý do:** BudgetBot cần Query phân tích phức tạp. DynamoDB tuy không có cold-start nhưng giới hạn về query phân tích. Nhóm triển khai **Single-AZ (Primary) kết hợp Read Replica ở AZ khác** trên chip ARM t4g.micro để vừa tối ưu chi phí vừa đảm bảo khả năng dự phòng đọc và báo cáo dữ liệu tài chính mạnh mẽ.
 
 ### 4.3 Bảo mật tại cổng (Edge Security): WAF + Cognito
 - **Quyết định:** Không để phần backend (Lambda) tự lo bảo mật. Chuyển toàn bộ trọng trách phòng thủ ra lớp biên mạng (Edge Layer).
@@ -181,7 +181,7 @@ Dưới đây là chi tiết luồng hoạt động kỹ thuật và các quyế
 - **Top 3 Cost Drivers (Group by Tag):**
   - **Hạ tầng mạng (`hackathon-vpc`):** ~$1.35 (Chi phí VPC, Subnet, Network Interface — cố định bất kể traffic).
   - **VPC Interface Endpoints (`vpce-bedrock`, `hackathon-vpce-bedrock`, `budgetbot-secrets-endpoint`):** ~$0.54 tổng (3 endpoints × ~$0.18). Rẻ hơn đáng kể so với việc dùng NAT Gateway ~$2.16/48h.
-  - **RDS Single-AZ:** ~$3.80 (Chi phí lớn nhất — đây là chi phí vận hành cần thiết cho cơ sở dữ liệu quan hệ, cung cấp năng lực phân tích báo cáo và bảo mật dữ liệu cho hệ thống tài chính).
+  - **RDS (Single-AZ + Read Replica):** ~$3.80 (Chi phí lớn nhất — bao gồm thực thể Primary và Read Replica hoạt động chéo AZ để đảm bảo khả năng đọc báo cáo hiệu năng cao và phân tích dữ liệu tài chính ổn định).
 - **Ghi chú:** AWS Learner Lab Credit đã được áp dụng, giá trị offset hiển thị trong mục "No tag key: Name" trên Cost Explorer.
 
 ### 6.2 Bằng chứng AWS Cost Explorer
