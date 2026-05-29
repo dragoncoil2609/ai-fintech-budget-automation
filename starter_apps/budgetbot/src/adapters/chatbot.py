@@ -3,6 +3,50 @@ import json
 import boto3
 from typing import Any
 
+CATEGORIES = [
+    "Food", "Transport", "Shopping", "Utilities", "Entertainment",
+    "Health", "Subscriptions", "Income", "Transfer", "Other",
+]
+CATEGORY_ALIASES = {
+    "ăn uống": "Food",
+    "an uong": "Food",
+    "food": "Food",
+    "di chuyển": "Transport",
+    "di chuyen": "Transport",
+    "transport": "Transport",
+    "mua sắm": "Shopping",
+    "mua sam": "Shopping",
+    "shopping": "Shopping",
+    "tiện ích": "Utilities",
+    "tien ich": "Utilities",
+    "utilities": "Utilities",
+    "giải trí": "Entertainment",
+    "giai tri": "Entertainment",
+    "entertainment": "Entertainment",
+    "sức khỏe": "Health",
+    "suc khoe": "Health",
+    "health": "Health",
+    "đăng ký": "Subscriptions",
+    "dang ky": "Subscriptions",
+    "subscriptions": "Subscriptions",
+    "thu nhập": "Income",
+    "thu nhap": "Income",
+    "income": "Income",
+    "chuyển khoản": "Transfer",
+    "chuyen khoan": "Transfer",
+    "transfer": "Transfer",
+    "khác": "Other",
+    "khac": "Other",
+    "other": "Other",
+}
+
+
+def _normalize_budget_category(category: str) -> str:
+    raw = (category or "").strip()
+    if raw in CATEGORIES:
+        return raw
+    return CATEGORY_ALIASES.get(raw.lower(), raw)
+
 CHATBOT_SYSTEM_PROMPT = """You are an AI Money Coach.
 Your goal is to help the user understand their spending, provide budget recommendations, and set budget limits.
 You will be provided with the user's recent transactions, their current budget limits (caps), and a pre-calculated summary of their exact total spending per category.
@@ -12,7 +56,7 @@ Rules:
 2. When asked about spending totals for a category, DO NOT calculate it yourself from the transactions list! Instead, look at the "Category Summary context" to get the exact total. Then, list the contributing items concisely from the Transactions list.
    Expense totals in the database are negative numbers. When presenting spending to the user, show the absolute positive amount (for example, say "3,900,000 VND spent", not "-3,900,000 VND").
 3. When asked for budget recommendations, analyze their spending and suggest realistic limits.
-4. If the user asks to set a budget, use the 'set_budget' tool.
+4. If the user asks to set a budget, use the 'set_budget' tool. The tool category must be one of these English enum values: Food, Transport, Shopping, Utilities, Entertainment, Health, Subscriptions, Income, Transfer, Other. If the user says a Vietnamese category, map it to the matching English enum before calling the tool.
 5. EMPTY DATA HANDLING: If the "Transactions context" says "No transactions found", warmly welcome the user and instruct them to upload their bank statement (CSV or PDF) using the upload area on the screen to get started. Do not apologize, just guide them enthusiastically.
 6. Be friendly, professional, and concise.
 7. IMPORTANT: When mentioning categories, you MUST use the exact Vietnamese names corresponding to the data:
@@ -109,7 +153,7 @@ class ChatbotAI:
                             "json": {
                                 "type": "object",
                                 "properties": {
-                                    "category": {"type": "string", "description": "The spending category (e.g., Food, Shopping, Transport)"},
+                                    "category": {"type": "string", "enum": CATEGORIES, "description": "The spending category enum."},
                                     "amount": {"type": "number", "description": "The budget limit amount"}
                                 },
                                 "required": ["category", "amount"]
@@ -171,8 +215,10 @@ class ChatbotAI:
                     # Execute tool
                     tool_input = json.loads(tool_input_str)
                     if tool_name == "set_budget":
-                        category = tool_input.get("category")
+                        category = _normalize_budget_category(tool_input.get("category", ""))
                         amount = float(tool_input.get("amount", 0))
+                        if category not in CATEGORIES or amount <= 0:
+                            raise ValueError("Invalid budget category or amount")
                         userstore.set_budget(user_id, category, amount)
                         
                         tool_result = {

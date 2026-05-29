@@ -14,17 +14,21 @@ function getChatSessionId() {
     const existing = window.localStorage.getItem(CHAT_SESSION_KEY)
     if (existing) return existing
 
-    const next = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const next = createChatSessionId()
     window.localStorage.setItem(CHAT_SESSION_KEY, next)
     return next
   } catch {
-    return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    return createChatSessionId()
   }
 }
 
-export default function Chatbot({ authFetch, month, resetKey }) {
+function createChatSessionId() {
+  return window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+export default function Chatbot({ authFetch, month, resetKey, onDataChanged }) {
   const [isOpen, setIsOpen] = useState(false)
-  const [sessionId] = useState(getChatSessionId)
+  const [sessionId, setSessionId] = useState(getChatSessionId)
   const [messages, setMessages] = useState([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -44,6 +48,31 @@ export default function Chatbot({ authFetch, month, resetKey }) {
     setMessages([INITIAL_MESSAGE])
     setInput('')
   }, [resetKey])
+
+  const resetConversation = async () => {
+    if (loading) return
+    const oldSessionId = sessionId
+    const nextSessionId = createChatSessionId()
+
+    setSessionId(nextSessionId)
+    try {
+      window.localStorage.setItem(CHAT_SESSION_KEY, nextSessionId)
+    } catch {
+      // localStorage can fail in restricted browser contexts; the in-memory session still resets.
+    }
+    setMessages([INITIAL_MESSAGE])
+    setInput('')
+
+    try {
+      await authFetch(`${API_BASE}/chat/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: oldSessionId }),
+      })
+    } catch (err) {
+      console.error('Failed to reset chat memory:', err)
+    }
+  }
 
   const handleSend = async () => {
     if (!input.trim() || loading) return
@@ -100,6 +129,7 @@ export default function Chatbot({ authFetch, month, resetKey }) {
       })
     } finally {
       setLoading(false)
+      onDataChanged?.()
     }
   }
 
@@ -129,7 +159,18 @@ export default function Chatbot({ authFetch, month, resetKey }) {
               <div className="chatbot-avatar">🤖</div>
               AI Money Coach
             </div>
-            <button className="chatbot-close" onClick={() => setIsOpen(false)}>✕</button>
+            <div className="chatbot-actions">
+              <button
+                className="chatbot-icon-btn"
+                onClick={resetConversation}
+                disabled={loading}
+                title="Reset hội thoại"
+                aria-label="Reset hội thoại"
+              >
+                ↻
+              </button>
+              <button className="chatbot-close" onClick={() => setIsOpen(false)} title="Đóng" aria-label="Đóng">✕</button>
+            </div>
           </div>
           
           <div className="chatbot-messages">

@@ -361,7 +361,9 @@ export default function App() {
   const [alert, setAlert]           = useState(null)  // { type, msg }
   const [editTxn, setEditTxn]       = useState(null)
   const [clearing, setClearing]     = useState(false)
+  const [budgets, setBudgets]       = useState({})
   const [budgetAlerts, setBudgetAlerts] = useState([])
+  const [budgetStatus, setBudgetStatus] = useState([])
   const [showBudget, setShowBudget] = useState(false)
   const [showAddTxn, setShowAddTxn] = useState(false)
   const [chatResetKey, setChatResetKey] = useState(0)
@@ -375,6 +377,9 @@ export default function App() {
     setUserEmail('')
     setSummary(null)
     setTxns([])
+    setBudgets({})
+    setBudgetAlerts([])
+    setBudgetStatus([])
   }
 
   /* ── authFetch: tự động đính token vào mọi API call ── */
@@ -394,7 +399,7 @@ export default function App() {
       const [sumRes, txnRes, budRes] = await Promise.all([
         authFetch(`${API_BASE}/summary${q}`),
         authFetch(`${API_BASE}/transactions${q}`),
-        authFetch(`${API_BASE}/budgets`),
+        authFetch(`${API_BASE}/budgets${q}`),
       ])
       if (!sumRes.ok || !txnRes.ok) throw new Error('Không thể tải dữ liệu từ server')
       const sumData = await sumRes.json()
@@ -402,7 +407,9 @@ export default function App() {
       const budData = budRes.ok ? await budRes.json() : { alerts: [] }
       setSummary(sumData)
       setTxns(txnData.transactions || [])
+      setBudgets(budData.budgets || {})
       setBudgetAlerts(budData.alerts || [])
+      setBudgetStatus(budData.status || [])
     } catch (e) {
       setAlert({ type: 'error', msg: e.message || 'Lỗi kết nối đến server' })
     } finally {
@@ -600,6 +607,8 @@ export default function App() {
       await authFetch(`${API_BASE}/transactions`, { method: 'DELETE' })
       setSummary(null)
       setTxns([])
+      setBudgetAlerts([])
+      setBudgetStatus([])
       setChatResetKey(k => k + 1)
       setAlert({ type: 'success', msg: 'Đã xóa toàn bộ dữ liệu giao dịch.' })
     } catch {
@@ -683,10 +692,53 @@ export default function App() {
           <div key={idx} className="alert alert-danger budget-alert" style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.1), rgba(220,38,38,0.2))', border: '1px solid #ef4444' }}>
             <span className="alert-icon">🔥</span>
             <span>
-              <strong>CẢNH BÁO NGÂN SÁCH!</strong> Bạn đã chi <strong>{fmtVND(b_alert.spent)}</strong> cho <strong>{CATEGORY_VI[b_alert.category] || b_alert.category}</strong>, vượt quá giới hạn <strong>{fmtVND(b_alert.limit)}</strong>!
+              <strong>CẢNH BÁO NGÂN SÁCH!</strong> Bạn đã chi <strong>{fmtFull(b_alert.spent)}</strong> cho <strong>{CATEGORY_VI[b_alert.category] || b_alert.category}</strong>, vượt quá giới hạn <strong>{fmtFull(b_alert.limit)}</strong>!
             </span>
           </div>
         ))}
+
+        {budgetStatus.length > 0 && (
+          <section className="budget-status-strip" style={{ display: 'grid', gap: 10, marginBottom: 18 }}>
+            {budgetStatus.map((b) => {
+              const pct = Math.min(Number(b.percent || 0), 100)
+              const exceeded = Boolean(b.exceeded)
+              return (
+                <div
+                  key={b.category}
+                  style={{
+                    display: 'grid',
+                    gap: 8,
+                    padding: '12px 14px',
+                    border: `1px solid ${exceeded ? 'rgba(239,68,68,.55)' : 'rgba(34,211,238,.22)'}`,
+                    borderRadius: 10,
+                    background: exceeded ? 'rgba(239,68,68,.10)' : 'rgba(15,23,42,.55)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                    <strong>{CATEGORY_ICON[b.category]} {CATEGORY_VI[b.category] || b.category}</strong>
+                    <span style={{ color: exceeded ? '#fca5a5' : 'var(--text-muted)', fontSize: '.9rem' }}>
+                      {fmtFull(b.spent)} / {fmtFull(b.limit)}
+                    </span>
+                  </div>
+                  <div style={{ height: 8, borderRadius: 999, background: 'rgba(148,163,184,.18)', overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        width: `${pct}%`,
+                        height: '100%',
+                        background: exceeded ? '#ef4444' : '#22d3ee',
+                      }}
+                    />
+                  </div>
+                  <span style={{ color: exceeded ? '#fca5a5' : 'var(--text-muted)', fontSize: '.82rem' }}>
+                    {exceeded
+                      ? `Vượt ${fmtFull(Math.max(b.spent - b.limit, 0))}`
+                      : `Còn lại ${fmtFull(b.remaining)}`}
+                  </span>
+                </div>
+              )
+            })}
+          </section>
+        )}
 
         {/* Upload zone */}
         <section className="upload-section">
@@ -940,7 +992,7 @@ export default function App() {
       </footer>
 
       {/* Modals */}
-      {showBudget && <BudgetSetupModal budgets={summary?.by_category || {}} onClose={() => setShowBudget(false)} onSave={handleSetBudget} />}
+      {showBudget && <BudgetSetupModal budgets={budgets} onClose={() => setShowBudget(false)} onSave={handleSetBudget} />}
       {showAddTxn && <AddTransactionModal onClose={() => setShowAddTxn(false)} onSave={handleAddTxn} />}
       {csvPreviewData && <CSVPreviewModal previewData={csvPreviewData} onClose={() => {setCsvPreviewData(null); setPendingFile(null)}} onConfirm={(mapping) => {setCsvPreviewData(null); handleUpload(pendingFile, mapping)}} />}
 
@@ -954,7 +1006,7 @@ export default function App() {
       )}
 
       {/* Floating Chatbot */}
-      <Chatbot authFetch={authFetch} month={month} resetKey={chatResetKey} CATEGORY_VI={CATEGORY_VI} />
+      <Chatbot authFetch={authFetch} month={month} resetKey={chatResetKey} onDataChanged={() => fetchData(month)} CATEGORY_VI={CATEGORY_VI} />
     </div>
   )
 }

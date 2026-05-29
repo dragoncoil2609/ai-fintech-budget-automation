@@ -81,6 +81,39 @@ def test_summary_with_month_filter():
     assert body["by_category"]
 
 
+def test_budget_status_uses_abs_spending_and_month_filter():
+    user_id = "budget-status-user"
+    client.post(
+        "/transactions",
+        json={"date": "2026-04-03", "description": "Pizza", "amount": -170000, "category": "Food"},
+        headers={"X-User-Id": user_id},
+    )
+    client.post(
+        "/transactions",
+        json={"date": "2026-05-03", "description": "Coffee", "amount": -99000, "category": "Food"},
+        headers={"X-User-Id": user_id},
+    )
+
+    budget_res = client.post(
+        "/budgets",
+        json={"category": "Ăn uống", "amount": 100000},
+        headers={"X-User-Id": user_id},
+    )
+    assert budget_res.status_code == 200, budget_res.text
+    assert budget_res.json()["category"] == "Food"
+
+    april = client.get("/budgets?month=2026-04", headers={"X-User-Id": user_id}).json()
+    assert april["status"][0]["spent"] == 170000
+    assert april["status"][0]["exceeded"] is True
+    assert len(april["alerts"]) == 1
+
+    may = client.get("/budgets?month=2026-05", headers={"X-User-Id": user_id}).json()
+    assert may["status"][0]["spent"] == 99000
+    assert may["status"][0]["remaining"] == 1000
+    assert may["status"][0]["exceeded"] is False
+    assert may["alerts"] == []
+
+
 def test_transactions_isolated_per_user():
     client.post(
         "/upload",
@@ -220,3 +253,24 @@ def test_chat_endpoint_persists_server_side_memory(monkeypatch):
     recent = userstore.list_recent_chat_messages("memory-user", "memory-user:local-session", limit=8)
     assert [m["role"] for m in recent] == ["user", "assistant"]
     assert "mục tiêu tiết kiệm" in recent[0]["text"]
+
+
+def test_chat_reset_clears_only_current_session():
+    user_id = "reset-chat-user"
+    userstore.get_or_create_chat_session(user_id, f"{user_id}:session-a")
+    userstore.add_chat_message(user_id, f"{user_id}:session-a", "user", "Session A")
+    userstore.get_or_create_chat_session(user_id, f"{user_id}:session-b")
+    userstore.add_chat_message(user_id, f"{user_id}:session-b", "user", "Session B")
+
+    r = client.post(
+        "/chat/reset",
+        json={"session_id": "session-a"},
+        headers={"X-User-Id": user_id},
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["scope"] == "session"
+    assert userstore.list_recent_chat_messages(user_id, f"{user_id}:session-a", limit=8) == []
+    recent_b = userstore.list_recent_chat_messages(user_id, f"{user_id}:session-b", limit=8)
+    assert len(recent_b) == 1
+    assert recent_b[0]["text"] == "Session B"

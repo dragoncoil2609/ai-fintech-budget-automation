@@ -266,6 +266,10 @@ class ChatBody(BaseModel):
     month: Optional[str] = None
     history: Optional[List[dict]] = None
 
+
+class ChatResetBody(BaseModel):
+    session_id: Optional[str] = None
+
 from fastapi.responses import StreamingResponse
 
 @app.post("/chat")
@@ -284,12 +288,22 @@ def chat(
     )
     return StreamingResponse(generator, media_type="text/event-stream")
 
+
+@app.post("/chat/reset")
+def reset_chat(
+    request: Request,
+    body: ChatResetBody,
+    x_user_id: Optional[str] = Header(default=None),
+) -> dict:
+    return handlers.handle_reset_chat(_resolve_user_id(request, x_user_id), body.session_id, userstore)
+
 @app.get("/budgets")
 def get_budgets(
     request: Request,
+    month: Optional[str] = None,
     x_user_id: Optional[str] = Header(default=None),
 ) -> dict:
-    return handlers.handle_get_budgets(_resolve_user_id(request, x_user_id), userstore)
+    return handlers.handle_get_budgets(_resolve_user_id(request, x_user_id), month, userstore)
 
 
 class BudgetUpdate(BaseModel):
@@ -303,7 +317,10 @@ def set_budget(
     body: BudgetUpdate,
     x_user_id: Optional[str] = Header(default=None),
 ) -> dict:
-    return handlers.handle_set_budget(_resolve_user_id(request, x_user_id), body.category, body.amount, userstore)
+    try:
+        return handlers.handle_set_budget(_resolve_user_id(request, x_user_id), body.category, body.amount, userstore)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # ── Transactions & Summary ────────────────────────────────────────────────────

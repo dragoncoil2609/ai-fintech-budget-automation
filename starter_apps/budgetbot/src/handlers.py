@@ -14,6 +14,42 @@ CHAT_RECENT_MESSAGE_LIMIT = 8
 CHAT_SUMMARY_KEEP_RECENT = 8
 CHAT_SUMMARY_BATCH_LIMIT = 20
 CHAT_TRANSACTION_LIMIT = 40
+CATEGORIES = {
+    "Food", "Transport", "Shopping", "Utilities", "Entertainment",
+    "Health", "Subscriptions", "Income", "Transfer", "Other",
+}
+CATEGORY_ALIASES = {
+    "ăn uống": "Food",
+    "an uong": "Food",
+    "food": "Food",
+    "di chuyển": "Transport",
+    "di chuyen": "Transport",
+    "transport": "Transport",
+    "mua sắm": "Shopping",
+    "mua sam": "Shopping",
+    "shopping": "Shopping",
+    "tiện ích": "Utilities",
+    "tien ich": "Utilities",
+    "utilities": "Utilities",
+    "giải trí": "Entertainment",
+    "giai tri": "Entertainment",
+    "entertainment": "Entertainment",
+    "sức khỏe": "Health",
+    "suc khoe": "Health",
+    "health": "Health",
+    "đăng ký": "Subscriptions",
+    "dang ky": "Subscriptions",
+    "subscriptions": "Subscriptions",
+    "thu nhập": "Income",
+    "thu nhap": "Income",
+    "income": "Income",
+    "chuyển khoản": "Transfer",
+    "chuyen khoan": "Transfer",
+    "transfer": "Transfer",
+    "khác": "Other",
+    "khac": "Other",
+    "other": "Other",
+}
 
 _CATEGORY_HINTS = {
     "Food": ["food", "eat", "eating", "restaurant", "coffee", "cafe", "ăn", "an", "uống", "uong"],
@@ -55,6 +91,14 @@ def _select_chat_transactions(message: str, transactions: list, limit: int = CHA
             return filtered[:limit]
 
     return transactions[:limit]
+
+
+def _normalize_budget_category(category: str) -> str:
+    raw = (category or "").strip()
+    if raw in CATEGORIES:
+        return raw
+    normalized = raw.lower()
+    return CATEGORY_ALIASES.get(normalized, raw)
 
 
 def _parse_csv(data: bytes, mapping: dict = None) -> list:
@@ -554,13 +598,32 @@ def handle_clear_transactions(user_id: str, userstore) -> dict:
         userstore.clear_chat_memory(user_id)
     return {"status": "success"}
 
+
+def handle_reset_chat(user_id: str, session_id: str | None, userstore) -> dict:
+    if not hasattr(userstore, "clear_chat_session") and not hasattr(userstore, "clear_chat_memory"):
+        return {"status": "unsupported"}
+
+    server_session_id = _normalize_chat_session_id(user_id, session_id)
+    if server_session_id and hasattr(userstore, "clear_chat_session"):
+        userstore.clear_chat_session(user_id, server_session_id)
+        return {"status": "success", "scope": "session"}
+
+    userstore.clear_chat_memory(user_id)
+    return {"status": "success", "scope": "all"}
+
 def handle_delete_transaction(user_id: str, txn_id: int, userstore) -> dict:
     userstore.delete_transaction(user_id, txn_id)
     return {"status": "success"}
 
 def handle_set_budget(user_id: str, category: str, amount: float, userstore) -> dict:
-    userstore.set_budget(user_id, category, amount)
-    return {"status": "success"}
+    normalized_category = _normalize_budget_category(category)
+    amount = float(amount)
+    if normalized_category not in CATEGORIES:
+        raise ValueError(f"Unsupported budget category: {category}")
+    if amount <= 0:
+        raise ValueError("Budget amount must be greater than 0")
+    userstore.set_budget(user_id, normalized_category, amount)
+    return {"status": "success", "category": normalized_category, "amount": amount}
 
 def handle_add_transaction(user_id: str, data: dict, userstore, ai_client) -> dict:
     import uuid
@@ -654,14 +717,28 @@ def handle_chat(user_id: str, message: str, session_id: str | None, month: str |
             
     return sse_generator()
 
-def handle_get_budgets(user_id: str, userstore) -> dict:
+def handle_get_budgets(user_id: str, month: Optional[str], userstore) -> dict:
     budgets = userstore.get_budgets(user_id)
-    summary = userstore.summary(user_id)
+    summary = userstore.summary(user_id, month=month)
     
     alerts = []
-    for category, limit in budgets.items():
-        spent = summary.get(category, {}).get("total", 0)
-        if spent > limit:
-            alerts.append({"category": category, "limit": limit, "spent": spent})
+    budget_status = []
+    for category, raw_limit in budgets.items():
+        limit = float(raw_limit)
+        category_total = float(summary.get(category, {}).get("total", 0))
+        spent = abs(category_total) if category_total < 0 else 0
+        remaining = max(limit - spent, 0)
+        percent = round((spent / limit) * 100, 1) if limit > 0 else 0
+        item = {
+            "category": category,
+            "limit": limit,
+            "spent": spent,
+            "remaining": remaining,
+            "percent": percent,
+            "exceeded": spent > limit,
+        }
+        budget_status.append(item)
+        if item["exceeded"]:
+            alerts.append(item)
             
-    return {"budgets": budgets, "alerts": alerts}
+    return {"budgets": budgets, "month": month, "status": budget_status, "alerts": alerts}

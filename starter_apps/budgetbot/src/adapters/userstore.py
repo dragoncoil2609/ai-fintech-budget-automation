@@ -169,6 +169,11 @@ class PostgresUserStore:
             cur.execute("DELETE FROM chat_messages WHERE user_id = %s", (user_id,))
             cur.execute("DELETE FROM chat_sessions WHERE user_id = %s", (user_id,))
 
+    def clear_chat_session(self, user_id: str, session_id: str) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute("DELETE FROM chat_messages WHERE user_id = %s AND session_id = %s", (user_id, session_id))
+            cur.execute("DELETE FROM chat_sessions WHERE user_id = %s AND id = %s", (user_id, session_id))
+
     def delete_transaction(self, user_id: str, txn_id: int) -> None:
         with self.conn.cursor() as cur:
             cur.execute("DELETE FROM transactions WHERE user_id = %s AND id = %s", (user_id, txn_id))
@@ -426,6 +431,11 @@ class SQLiteUserStore:
     def clear_chat_memory(self, user_id: str) -> None:
         self.conn.execute("DELETE FROM chat_messages WHERE user_id = ?", (user_id,))
         self.conn.execute("DELETE FROM chat_sessions WHERE user_id = ?", (user_id,))
+        self.conn.commit()
+
+    def clear_chat_session(self, user_id: str, session_id: str) -> None:
+        self.conn.execute("DELETE FROM chat_messages WHERE user_id = ? AND session_id = ?", (user_id, session_id))
+        self.conn.execute("DELETE FROM chat_sessions WHERE user_id = ? AND id = ?", (user_id, session_id))
         self.conn.commit()
 
     def delete_transaction(self, user_id: str, txn_id: int) -> None:
