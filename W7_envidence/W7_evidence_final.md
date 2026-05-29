@@ -157,7 +157,7 @@ Nhóm chọn Amazon RDS PostgreSQL (Single-AZ cho Primary kết hợp với 1 Re
 
 **EVIDENCE:**
 ![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.png)
-![AWS Cost Explorer](./image/evidence-cost-explorer.png)
+![AWS Cost Explorer](./image/evidence-cost-explorer1.png)
 
 **TRADE-OFF ACCEPTED:**
 - RDS có chi phí cố định và cần quản lý connection tốt hơn DynamoDB.
@@ -202,7 +202,7 @@ Nhóm quyết định không để phần backend (Lambda) tự lo bảo mật. 
 
 **EVIDENCE:**
 ![API Gateway JWT Authorizer](./image/api-gateway-authorizer.png)
-![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.png)
+
 
 **TRADE-OFF ACCEPTED:**
 - Tăng độ phức tạp khi cấu hình JWT Authorizer trên API Gateway và thiết lập tích hợp WAF với CloudFront.
