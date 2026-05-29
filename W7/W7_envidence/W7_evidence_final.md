@@ -187,6 +187,75 @@ Dưới đây là chi tiết luồng hoạt động kỹ thuật và các quyế
 ### 6.2 Bằng chứng AWS Cost Explorer
 ![AWS Cost Explorer](./image/evidence-cost-explorer.png)
 
+### 6.3 Measurement & Decisions — Các quyết định kiến trúc chính
+
+#### Decision 1: Dùng S3 Presigned URL + `/enqueue` + SQS async thay vì upload/xử lý đồng bộ qua Lambda
+
+**DECISION:**  
+Nhóm chọn luồng xử lý file lớn bằng S3 Presigned URL kết hợp `/enqueue` và Amazon SQS. Frontend gọi `/upload-request` để nhận presigned URL, upload file trực tiếp lên S3, sau đó gọi `/enqueue` để Lambda gửi job vào SQS Process Queue. SQS Event Source Mapping trigger lại cùng Lambda ở worker mode để xử lý file bất đồng bộ.
+
+**ALTERNATIVES CONSIDERED:**
+- **Upload và xử lý trực tiếp qua `/upload`:** loại bỏ vì file CSV/PDF lớn và quá trình gọi AI/ghi RDS có thể vượt thời gian chờ của API Gateway/Lambda, làm người dùng phải chờ lâu hoặc gặp timeout.
+- **S3 Event Notification trực tiếp vào SQS:** loại bỏ trong phạm vi hiện tại vì `/enqueue` giúp frontend nhận `job_id`, truyền rõ `user_id`, `s3_key`, `filename` và dễ theo dõi trạng thái job/polling hơn.
+
+**MEASUREMENT:**
+- Custom metric `RowsInserted` ghi nhận một job xử lý thành công đã insert `83` dòng giao dịch vào RDS.
+- Custom metrics `UploadJobCreated`, `UploadJobSucceeded`, `SQSMessageProcessed` xuất hiện trong namespace `BudgetBot/W7`, chứng minh workflow async đã chạy end-to-end.
+- Alarm `SQS ApproximateAgeOfOldestMessage` đã vào trạng thái ALARM trong quá trình test, chứng minh hệ thống phát hiện được job bị kẹt/backlog trong queue.
+- DLQ có message trong test lỗi có kiểm soát, chứng minh cơ chế retry và failure handling hoạt động.
+
+**EVIDENCE:**
+![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.jpg)
+![Bằng chứng SQS Queues](./image/evidence-sqs-queues.png)
+
+**TRADE-OFF ACCEPTED:**
+- Luồng xử lý phức tạp hơn vì frontend phải thực hiện 3 bước: xin presigned URL, upload file lên S3, rồi gọi `/enqueue`.
+- Đổi lại, hệ thống tránh được timeout, giảm tải cho Lambda/API Gateway, có buffer chống spike bằng SQS, có retry và DLQ để debug job lỗi.
+
+#### Decision 2: Chọn RDS PostgreSQL thay vì DynamoDB cho phân tích giao dịch
+
+**DECISION:**  
+Nhóm chọn Amazon RDS PostgreSQL (Single-AZ cho Primary kết hợp với 1 Read Replica ở AZ khác) để lưu transactions, categories và dữ liệu phân tích chi tiêu của người dùng.
+
+**ALTERNATIVES CONSIDERED:**
+- **DynamoDB:** loại bỏ vì BudgetBot cần các truy vấn phân tích như tổng chi tiêu theo category/tháng, `GROUP BY`, `SUM`, `COUNT`, lọc theo thời gian. Nếu dùng DynamoDB, các truy vấn này dễ phải scan hoặc cần thiết kế nhiều GSI/phụ trợ phức tạp.
+- **Lưu dữ liệu giao dịch trong S3 dạng file:** loại bỏ vì frontend cần đọc lại dữ liệu có cấu trúc, cập nhật category và hiển thị dashboard nhanh qua `/summary` và `/transactions`.
+
+**MEASUREMENT:**
+- Một file test đã được xử lý thành công và insert `83` dòng giao dịch vào RDS, thể hiện qua custom metric `RowsInserted`.
+- Dashboard CloudWatch theo dõi `DatabaseConnections` để phát hiện áp lực connection từ Lambda vào PostgreSQL.
+- Cost Explorer ghi nhận RDS là cost driver lớn nhất, khoảng `$3.80`, nhưng đây là chi phí được chấp nhận để đổi lấy truy vấn SQL và dữ liệu persistent.
+
+**EVIDENCE:**
+![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.jpg)
+![AWS Cost Explorer](./image/evidence-cost-explorer.png)
+
+**TRADE-OFF ACCEPTED:**
+- RDS có chi phí cố định và cần quản lý connection tốt hơn DynamoDB.
+- Nhóm chấp nhận trade-off này vì dữ liệu tài chính cần truy vấn phân tích quan hệ, tổng hợp theo tháng/category và đọc lại qua nhiều phiên làm việc. Việc kết hợp Single-AZ Primary và Read Replica chéo AZ giúp giảm tải đọc hiệu năng cao và có dự phòng nhưng vẫn tối ưu chi phí hơn Multi-AZ Standby đắt tiền.
+
+#### Decision 3: Chọn Lambda container image thay vì ECS/EC2 cho backend compute
+
+**DECISION:**  
+Nhóm chọn AWS Lambda chạy container image để triển khai FastAPI backend qua Mangum.
+
+**ALTERNATIVES CONSIDERED:**
+- **EC2:** loại bỏ vì instance phải chạy liên tục, cần tự quản lý OS, security patch, deployment và scaling.
+- **ECS Fargate:** loại bỏ vì cần cluster/task definition/service phức tạp hơn và task thường có chi phí duy trì cao hơn cho demo hackathon.
+- **Lambda ZIP package:** loại bỏ vì backend cần thư viện xử lý PDF/AI có thể vượt giới hạn package truyền thống.
+
+**MEASUREMENT:**
+- Lambda chạy được cả API Gateway routes và SQS worker trong cùng một container image.
+- Lambda Duration và Errors được theo dõi trên CloudWatch Dashboard.
+- ECR được dùng làm nơi lưu container image để deploy Lambda backend.
+
+**EVIDENCE:**
+![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.jpg)
+![CI/CD Success](./image/cicd-success.png)
+
+**TRADE-OFF ACCEPTED:**
+- Lambda có cold start và giới hạn runtime, không phù hợp với job cực dài.
+- Nhóm giảm rủi ro này bằng cách đưa job lớn vào SQS async, theo dõi Lambda Duration và dùng DLQ cho failure handling.
 
 ---
 
