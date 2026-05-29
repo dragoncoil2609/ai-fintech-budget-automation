@@ -4,6 +4,10 @@ import './Chatbot.css'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 const CHAT_SESSION_KEY = 'budgetbot.chatSessionId'
+const INITIAL_MESSAGE = {
+  role: 'assistant',
+  text: 'Chào bạn! Mình là AI Money Coach. Bạn muốn hỏi gì về chi tiêu, hay muốn mình đề xuất và thiết lập ngân sách?',
+}
 
 function getChatSessionId() {
   try {
@@ -18,12 +22,10 @@ function getChatSessionId() {
   }
 }
 
-export default function Chatbot({ authFetch }) {
+export default function Chatbot({ authFetch, month, resetKey }) {
   const [isOpen, setIsOpen] = useState(false)
   const [sessionId] = useState(getChatSessionId)
-  const [messages, setMessages] = useState([
-    { role: 'assistant', text: 'Chào bạn! Mình là AI Money Coach. Bạn muốn hỏi gì về chi tiêu, hay muốn mình đề xuất và thiết lập ngân sách?' }
-  ])
+  const [messages, setMessages] = useState([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const messagesEndRef = useRef(null)
@@ -38,6 +40,11 @@ export default function Chatbot({ authFetch }) {
     }
   }, [messages, isOpen])
 
+  useEffect(() => {
+    setMessages([INITIAL_MESSAGE])
+    setInput('')
+  }, [resetKey])
+
   const handleSend = async () => {
     if (!input.trim() || loading) return
 
@@ -51,7 +58,7 @@ export default function Chatbot({ authFetch }) {
       const res = await authFetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMsg, session_id: sessionId }),
+        body: JSON.stringify({ message: userMsg, session_id: sessionId, month: month || null }),
       })
 
       if (!res.ok) throw new Error('Failed to fetch from chat API')

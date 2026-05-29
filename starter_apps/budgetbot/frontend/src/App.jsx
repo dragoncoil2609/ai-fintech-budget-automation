@@ -364,6 +364,7 @@ export default function App() {
   const [budgetAlerts, setBudgetAlerts] = useState([])
   const [showBudget, setShowBudget] = useState(false)
   const [showAddTxn, setShowAddTxn] = useState(false)
+  const [chatResetKey, setChatResetKey] = useState(0)
   const [csvPreviewData, setCsvPreviewData] = useState(null)
   const [pendingFile, setPendingFile] = useState(null)
   const fileRef                     = useRef()
@@ -599,6 +600,7 @@ export default function App() {
       await authFetch(`${API_BASE}/transactions`, { method: 'DELETE' })
       setSummary(null)
       setTxns([])
+      setChatResetKey(k => k + 1)
       setAlert({ type: 'success', msg: 'Đã xóa toàn bộ dữ liệu giao dịch.' })
     } catch {
       setAlert({ type: 'error', msg: 'Lỗi khi xóa dữ liệu' })
@@ -952,7 +954,7 @@ export default function App() {
       )}
 
       {/* Floating Chatbot */}
-      <Chatbot authFetch={authFetch} CATEGORY_VI={CATEGORY_VI} />
+      <Chatbot authFetch={authFetch} month={month} resetKey={chatResetKey} CATEGORY_VI={CATEGORY_VI} />
     </div>
   )
 }

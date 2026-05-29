@@ -263,6 +263,7 @@ def job_status(
 class ChatBody(BaseModel):
     message: str
     session_id: Optional[str] = None
+    month: Optional[str] = None
     history: Optional[List[dict]] = None
 
 from fastapi.responses import StreamingResponse
@@ -273,7 +274,14 @@ def chat(
     body: ChatBody,
     x_user_id: Optional[str] = Header(default=None),
 ) -> StreamingResponse:
-    generator = handlers.handle_chat(_resolve_user_id(request, x_user_id), body.message, body.session_id, userstore, chatbot_client)
+    generator = handlers.handle_chat(
+        _resolve_user_id(request, x_user_id),
+        body.message,
+        body.session_id,
+        body.month,
+        userstore,
+        chatbot_client,
+    )
     return StreamingResponse(generator, media_type="text/event-stream")
 
 @app.get("/budgets")

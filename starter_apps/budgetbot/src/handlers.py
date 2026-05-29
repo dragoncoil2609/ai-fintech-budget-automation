@@ -550,6 +550,8 @@ def handle_update_category(user_id: str, txn_id: int, new_category: str, usersto
 
 def handle_clear_transactions(user_id: str, userstore) -> dict:
     userstore.clear_transactions(user_id)
+    if hasattr(userstore, "clear_chat_memory"):
+        userstore.clear_chat_memory(user_id)
     return {"status": "success"}
 
 def handle_delete_transaction(user_id: str, txn_id: int, userstore) -> dict:
@@ -584,11 +586,16 @@ def _chat_memory_available(userstore) -> bool:
     return all(hasattr(userstore, name) for name in required)
 
 
-def handle_chat(user_id: str, message: str, session_id: str | None, userstore, chatbot_client):
-    all_transactions = userstore.list_transactions(user_id)
+def handle_chat(user_id: str, message: str, session_id: str | None, month: str | None, userstore, chatbot_client):
+    all_transactions = userstore.list_transactions(user_id, month=month)
+    has_transactions = bool(all_transactions)
+    has_any_transactions = has_transactions or (bool(userstore.list_transactions(user_id)) if month else False)
+    if not has_any_transactions and hasattr(userstore, "clear_chat_memory"):
+        userstore.clear_chat_memory(user_id)
+
     transactions = _select_chat_transactions(message, all_transactions)
     budgets = userstore.get_budgets(user_id)
-    summary = userstore.summary(user_id)
+    summary = userstore.summary(user_id, month=month)
 
     session = {"id": session_id, "summary": "", "profile": {}, "message_count": 0}
     recent_messages = [{"role": "user", "text": message}]
@@ -598,11 +605,12 @@ def handle_chat(user_id: str, message: str, session_id: str | None, userstore, c
         session = userstore.get_or_create_chat_session(user_id, server_session_id)
         userstore.add_chat_message(user_id, session["id"], "user", message)
         session = userstore.get_or_create_chat_session(user_id, session["id"])
-        recent_messages = userstore.list_recent_chat_messages(
-            user_id,
-            session["id"],
-            limit=CHAT_RECENT_MESSAGE_LIMIT,
-        )
+        if has_transactions:
+            recent_messages = userstore.list_recent_chat_messages(
+                user_id,
+                session["id"],
+                limit=CHAT_RECENT_MESSAGE_LIMIT,
+            )
     
     stream_generator = chatbot_client.chat(
         user_id=user_id,
@@ -610,8 +618,9 @@ def handle_chat(user_id: str, message: str, session_id: str | None, userstore, c
         transactions=transactions,
         budgets=budgets,
         summary=summary,
-        memory_summary=session.get("summary", ""),
-        profile=session.get("profile", {}),
+        data_scope=f"Month {month}" if month else "All available transactions",
+        memory_summary=session.get("summary", "") if has_transactions else "",
+        profile=session.get("profile", {}) if has_transactions else {},
         userstore=userstore,
     )
     

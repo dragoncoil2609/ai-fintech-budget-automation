@@ -10,6 +10,7 @@ You will be provided with the user's recent transactions, their current budget l
 Rules:
 1. STRICT DOMAIN GUARDRAILS: You are a financial assistant. If the user asks about topics unrelated to personal finance, budgeting, saving, or their provided transactions (e.g., coding, general knowledge, politics), you MUST politely decline to answer and redirect them back to financial topics.
 2. When asked about spending totals for a category, DO NOT calculate it yourself from the transactions list! Instead, look at the "Category Summary context" to get the exact total. Then, list the contributing items concisely from the Transactions list.
+   Expense totals in the database are negative numbers. When presenting spending to the user, show the absolute positive amount (for example, say "3,900,000 VND spent", not "-3,900,000 VND").
 3. When asked for budget recommendations, analyze their spending and suggest realistic limits.
 4. If the user asks to set a budget, use the 'set_budget' tool.
 5. EMPTY DATA HANDLING: If the "Transactions context" says "No transactions found", warmly welcome the user and instruct them to upload their bank statement (CSV or PDF) using the upload area on the screen to get started. Do not apologize, just guide them enthusiastically.
@@ -20,6 +21,9 @@ Rules:
 
 Category Summary context (Use this for EXACT math totals!):
 {summary}
+
+Data Scope context:
+{data_scope}
 
 Transactions context:
 {transactions}
@@ -65,6 +69,7 @@ class ChatbotAI:
         transactions: list,
         budgets: dict,
         summary: dict,
+        data_scope: str = "All available transactions",
         memory_summary: str = "",
         profile: dict | None = None,
         userstore: Any = None,
@@ -89,6 +94,7 @@ class ChatbotAI:
             transactions=txns_str,
             budgets=budgets_str,
             summary=summary_str,
+            data_scope=data_scope,
             memory_summary=memory_summary or "No saved conversation memory yet.",
             profile=profile_str,
         )
