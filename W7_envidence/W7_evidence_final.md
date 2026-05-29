@@ -280,31 +280,6 @@ Nhóm đã ghi lại toàn bộ hệ thống cảnh báo và biểu đồ giám 
 
 ---
 
-## 9. Bằng chứng Triển khai AI & Chatbot Chuyên Sâu (AI Deep Dive)
-
-Để đảm bảo tính trung thực và minh chứng cho việc triển khai AI thật 100% trên môi trường AWS Production, nhóm G4 đã chuẩn bị một tài liệu bằng chứng kỹ thuật chuyên sâu về AI tại đây:
-
-👉 **[Tài liệu Bằng chứng Triển khai AI chi tiết](file:///d:/Hackathonw7/w7-budgetbot/W7_envidence/W7_AI_implementation_evidence.md)**
-
-### 9.1 Các điểm nhấn kiến trúc AI đặc sắc của BudgetBot:
-
-1. **Phân loại Giao dịch bằng Hybrid AI:**
-   * Kết hợp **Rule-based (Keyword Matching)** cục bộ để xử lý tức thì các merchant rõ ràng (Netflix, Highlands, Starbucks, EVN), giúp tiết kiệm tới **80% chi phí Token** và giảm latency.
-   * Gọi **Amazon Bedrock (Nova Lite 2)** qua Converse API chỉ khi gặp các giao dịch mơ hồ, bẩn hoặc mã ngân hàng opaque (ví dụ: `VINMART HCM 04`, `T1908 GRAB CITY`).
-   * Tự động **Local Fallback** sang bộ phân loại local nếu Bedrock gặp sự cố/timeout, đảm bảo luồng xử lý CSV/PDF không bao giờ bị gián đoạn.
-
-2. **Cơ chế Tự học từ Phản hồi Người dùng (User Feedback Loop):**
-   * Khi người dùng sửa đổi danh mục (category) trên giao diện, hệ thống sẽ lưu vào RDS và đánh dấu `confidence = 'high'`.
-   * Ở các lần phân tích file tiếp theo, các giao dịch `high-confidence` cũ này được trích xuất làm **Dynamic Few-Shot Examples** đưa vào prompt của Bedrock, giúp hệ thống tự cá nhân hóa theo thói quen của từng người dùng mà không cần Fine-Tuning đắt đỏ.
-
-3. **Ngăn chặn Rò rỉ Token & Tránh Hallucination (Money Coach Chatbot):**
-   * **SQL Summary làm Source of Truth:** Chatbot tuyệt đối không tự thực hiện phép cộng dồn thủ công từ text giao dịch. Thay vào đó, backend thực hiện SQL Aggregation từ RDS để truyền trực tiếp tổng chi tiêu chính xác cho LLM sử dụng.
-   * **Server-side Chat Memory:** Toàn bộ hội thoại được lưu bền vững trong bảng `chat_sessions` và `chat_messages` ở RDS. Hệ thống áp dụng chiến thuật **Rolling Summary** (chỉ gửi 8 message gần nhất kèm summary hội thoại cũ) giúp chatbot nhớ ngữ cảnh lâu dài nhưng không làm phình prompt.
-   * **Lọc Giao dịch Thông minh:** Hệ thống chỉ gửi tối đa 40 giao dịch liên quan trực tiếp đến danh mục người dùng đang hỏi (ví dụ hỏi về "ăn uống" sẽ ưu tiên gửi các giao dịch `Food`), giữ prompt tập trung cao độ và tối ưu chi phí token.
-
-4. **Hạ tầng AI Production-Ready đã được kiểm chứng qua AWS CLI:**
-   * Toàn bộ mã nguồn, cấu hình Lambda chạy Docker Container (timeout 900s, VPC Private subnet), cấu hình SQS Async trigger Worker và bằng chứng CloudWatch custom metrics (`BedrockCalls`, `BedrockLatencyMs`, `RowsParsed`) đều được ghi chép và xác thực bằng output thực tế trong tài liệu chi tiết.
-
 ---
 
 
