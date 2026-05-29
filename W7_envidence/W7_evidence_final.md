@@ -134,7 +134,7 @@ Nhóm chọn luồng xử lý file lớn bằng S3 Presigned URL kết hợp `/e
 - DLQ có message trong test lỗi có kiểm soát, chứng minh cơ chế retry và failure handling hoạt động.
 
 **EVIDENCE:**
-![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.jpg)
+![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.png)
 ![Bằng chứng SQS Queues](./image/evidence-sqs-queues.png)
 
 **TRADE-OFF ACCEPTED:**
@@ -156,7 +156,7 @@ Nhóm chọn Amazon RDS PostgreSQL (Single-AZ cho Primary kết hợp với 1 Re
 - Cost Explorer ghi nhận RDS là cost driver lớn nhất, khoảng `$3.80`, nhưng đây là chi phí được chấp nhận để đổi lấy truy vấn SQL và dữ liệu persistent.
 
 **EVIDENCE:**
-![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.jpg)
+![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.png)
 ![AWS Cost Explorer](./image/evidence-cost-explorer.png)
 
 **TRADE-OFF ACCEPTED:**
@@ -179,7 +179,7 @@ Nhóm chọn AWS Lambda chạy container image để triển khai FastAPI backen
 - ECR được dùng làm nơi lưu container image để deploy Lambda backend.
 
 **EVIDENCE:**
-![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.jpg)
+![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.png)
 ![CI/CD Success](./image/cicd-success.png)
 
 **TRADE-OFF ACCEPTED:**
@@ -202,7 +202,7 @@ Nhóm quyết định không để phần backend (Lambda) tự lo bảo mật. 
 
 **EVIDENCE:**
 ![API Gateway JWT Authorizer](./image/api-gateway-authorizer.png)
-![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.jpg)
+![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.png)
 
 **TRADE-OFF ACCEPTED:**
 - Tăng độ phức tạp khi cấu hình JWT Authorizer trên API Gateway và thiết lập tích hợp WAF với CloudFront.
@@ -270,7 +270,7 @@ Hệ thống BudgetBot đã chuyển từ "chạy mù" sang "có thể quan sát
 Nhóm đã ghi lại toàn bộ hệ thống cảnh báo và biểu đồ giám sát thực tế trên CloudWatch:
 
 **1. Tổng quan CloudWatch Dashboard & Custom Metrics (Lỗi nghiệp vụ):**
-![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.jpg)
+![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.png)
 ![Custom Metrics](./image/Custom%20metrics.jpg)
 
 **2. Cảnh báo lỗi hệ thống (Infrastructure Alarms):**
