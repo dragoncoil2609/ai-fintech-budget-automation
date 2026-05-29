@@ -156,8 +156,7 @@ aws lambda get-function-configuration --region us-west-2 `
 - `STORAGE_BACKEND=s3`: file upload được lưu trên S3.
 - `SQS_QUEUE_URL`: xử lý upload theo async queue, tránh timeout khi file lớn.
 - Lambda nằm trong VPC để kết nối RDS private.
-
-**Chỗ dán screenshot:** Lambda environment variables có `AI_BACKEND=bedrock`, `USERSTORE_BACKEND=postgres`, `STORAGE_BACKEND=s3`.
+Lambda environment variables có `AI_BACKEND=bedrock`, `USERSTORE_BACKEND=postgres`, `STORAGE_BACKEND=s3`.
 
 > Ảnh cần bổ sung: `./image/ai-lambda-env.png`
 
@@ -195,7 +194,7 @@ aws rds describe-db-instances --region us-west-2 `
 - Dữ liệu giao dịch, budget, chat memory được lưu bền vững trong RDS.
 - RDS không public, chỉ backend trong VPC truy cập.
 
-**Chỗ dán screenshot:** RDS instance `budgetbot-db` status available, PostgreSQL, publicly accessible false.
+RDS instance `budgetbot-db` status available, PostgreSQL, publicly accessible false.
 
 ![RDS PostgreSQL](./image/ai-rds-production.png)
 
@@ -256,7 +255,7 @@ aws lambda list-event-source-mappings --region us-west-2 `
 - Có DLQ để giữ message lỗi sau nhiều lần retry.
 - Queue đang không backlog tại thời điểm kiểm tra (`ApproximateNumberOfMessages=0`).
 
-**Chỗ dán screenshot:** SQS queue attributes hoặc Lambda trigger SQS.
+SQS queue attributes hoặc Lambda trigger SQS.
 
 ![SQS event source](./image/ai-sqs-event-source.png)
 
@@ -289,7 +288,7 @@ aws s3api get-bucket-location --bucket w7-budgetbot-upload-csv `
 - Lambda production cấu hình `STORAGE_BUCKET=w7-budgetbot-upload-csv`.
 - Upload file đi qua S3 thay vì gửi toàn bộ file nặng qua API Gateway.
 
-**Chỗ dán screenshot:** S3 bucket `w7-budgetbot-upload-csv`, có prefix/file upload của sao kê.
+S3 bucket `w7-budgetbot-upload-csv`, có prefix/file upload của sao kê.
 
 ![S3 upload bucket](./image/ai-s3-upload-bucket.png)
 
