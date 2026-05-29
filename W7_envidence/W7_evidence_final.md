@@ -232,12 +232,12 @@ Nhóm quyết định không để phần backend (Lambda) tự lo bảo mật. 
 ### 6.1 Chi phí thực tế 48H
 
 - **Ngân sách tối đa:** $100
-- **Chi phí thực tế 48H (từ Cost Explorer):** ~$5.60 — đạt mức **tối ưu chi phí**, chỉ bằng 5.6% ngân sách tối đa.
-- **Top 3 Cost Drivers (Group by Tag):**
-  - **Hạ tầng mạng (`hackathon-vpc`):** ~$1.35 (Chi phí VPC, Subnet, Network Interface — cố định bất kể traffic).
-  - **VPC Interface Endpoints (`vpce-bedrock`, `hackathon-vpce-bedrock`, `budgetbot-secrets-endpoint`):** ~$0.54 tổng (3 endpoints × ~$0.18). Rẻ hơn đáng kể so với việc dùng NAT Gateway ~$2.16/48h.
-  - **RDS (Single-AZ + Read Replica):** ~$3.80 (Chi phí lớn nhất — bao gồm thực thể Primary và Read Replica hoạt động chéo AZ để đảm bảo khả năng đọc báo cáo hiệu năng cao và phân tích dữ liệu tài chính ổn định).
-- **Ghi chú:** AWS Learner Lab Credit đã được áp dụng, giá trị offset hiển thị trong mục "No tag key: Name" trên Cost Explorer.
+- **Chi phí thực tế 48H (từ Cost Explorer):** **$4.60** — đạt mức **tối ưu chi phí cực hạn**, chỉ chiếm **4.6%** ngân sách tối đa trong suốt thời gian diễn ra Hackathon.
+- **Chi phí chi tiết theo dịch vụ (May-25 đến May-29):**
+  - **Hạ tầng mạng (VPC):** **$4.19** (Chi phí cố định cho 3 VPC Interface Endpoints liên kết chéo AZ gồm Bedrock và Secrets Manager, giúp loại bỏ hoàn toàn nhu cầu sử dụng NAT Gateway đắt đỏ ~$2.16/48h).
+  - **Amazon RDS (Relational Database Service):** **$0.40** (Chi phí cực thấp nhờ triển khai dòng chip ARM t4g.micro Single-AZ Primary kết hợp 1 Read Replica ở AZ khác).
+  - **Các dịch vụ Serverless khác (S3, CloudFront, Lambda, SQS):** **$0.00** (Tối ưu hóa tuyệt đối nhờ chính sách Free Tier và kiến trúc Scale-to-Zero chỉ tính phí khi có request thực tế).
+- **Ghi chú:** Các tag tài nguyên `Project: W7`, `Team: G04`, và `Owner` đã được gắn đầy đủ để hỗ trợ giám sát và phân tích chi phí trực quan trên AWS Cost Explorer.
 
 ### 6.2 Bằng chứng AWS Cost Explorer
 ![AWS Cost Explorer](./image/evidence-cost-explorer.png)
