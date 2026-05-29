@@ -241,6 +241,7 @@ Nhóm quyết định không để phần backend (Lambda) tự lo bảo mật. 
 
 ### 6.2 Bằng chứng AWS Cost Explorer
 ![AWS Cost Explorer](./image/evidence-cost-explorer.png)
+![AWS Cost Explorer](./image/evidence-cost-explorer1.png)
 
 
 
