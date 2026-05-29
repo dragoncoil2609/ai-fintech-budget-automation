@@ -118,40 +118,95 @@ Dưới đây là chi tiết luồng hoạt động kỹ thuật và các quyế
 
 ## 4. Các quyết định kiến trúc chính (Chống sập & Giảm tải)
 
-### 4.1 Xử lý Upload File Lớn: SQS Async vs. Đồng bộ (Sync)
-- **Quyết định:** Chuyển từ luồng Upload gọi API trực tiếp sang cấu trúc Bất đồng bộ (S3 Presigned URL + SQS Queue).
-- **Lý do & Tác dụng Giảm tải:** 
-  - **Tránh Timeout:** API Gateway có giới hạn cứng 29 giây. Xử lý file lớn hàng nghìn dòng bằng AI chắc chắn vượt 29s gây sập API.
-  - **Buffer giảm tải (Anti-Spike):** SQS làm hàng đợi trung gian (buffer). Dù 1000 user upload file cùng lúc, SQS sẽ từ từ "nhỏ giọt" message xuống Lambda Worker. 
-  - **Chịu tải vô cực:** DB RDS không bị bùng nổ kết nối (Connection Spike), API không bao giờ timeout. Đảm bảo trải nghiệm êm mượt mà không phải scale phần cứng tốn tiền.
+### 4.1 Decision 1: Dùng S3 Presigned URL + `/enqueue` + SQS async thay vì upload/xử lý đồng bộ qua Lambda
 
+**DECISION:**  
+Nhóm chọn luồng xử lý file lớn bằng S3 Presigned URL kết hợp `/enqueue` và Amazon SQS. Frontend gọi `/upload-request` để nhận presigned URL, upload file trực tiếp lên S3, sau đó gọi `/enqueue` để Lambda gửi job vào SQS Process Queue. SQS Event Source Mapping trigger lại cùng Lambda ở worker mode để xử lý file bất đồng bộ.
+
+**ALTERNATIVES CONSIDERED:**
+- **Upload và xử lý trực tiếp qua `/upload`:** loại bỏ vì file CSV/PDF lớn và quá trình gọi AI/ghi RDS có thể vượt thời gian chờ của API Gateway/Lambda, làm người dùng phải chờ lâu hoặc gặp timeout.
+- **S3 Event Notification trực tiếp vào SQS:** loại bỏ trong phạm vi hiện tại vì `/enqueue` giúp frontend nhận `job_id`, truyền rõ `user_id`, `s3_key`, `filename` và dễ theo dõi trạng thái job/polling hơn.
+
+**MEASUREMENT:**
+- Custom metric `RowsInserted` ghi nhận một job xử lý thành công đã insert `83` dòng giao dịch vào RDS.
+- Custom metrics `UploadJobCreated`, `UploadJobSucceeded`, `SQSMessageProcessed` xuất hiện trong namespace `BudgetBot/W7`, chứng minh workflow async đã chạy end-to-end.
+- Alarm `SQS ApproximateAgeOfOldestMessage` đã vào trạng thái ALARM trong quá trình test, chứng minh hệ thống phát hiện được job bị kẹt/backlog trong queue.
+- DLQ có message trong test lỗi có kiểm soát, chứng minh cơ chế retry và failure handling hoạt động.
+
+**EVIDENCE:**
+![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.jpg)
 ![Bằng chứng SQS Queues](./image/evidence-sqs-queues.png)
 
-### 4.2 Lựa chọn DB: RDS PostgreSQL vs. DynamoDB
-- **Lý do:** BudgetBot cần Query phân tích phức tạp. DynamoDB tuy không có cold-start nhưng giới hạn về query phân tích. Nhóm triển khai **Single-AZ (Primary) kết hợp Read Replica ở AZ khác** trên chip ARM t4g.micro để vừa tối ưu chi phí vừa đảm bảo khả năng dự phòng đọc và báo cáo dữ liệu tài chính mạnh mẽ.
+**TRADE-OFF ACCEPTED:**
+- Luồng xử lý phức tạp hơn vì frontend phải thực hiện 3 bước: xin presigned URL, upload file lên S3, rồi gọi `/enqueue`.
+- Đổi lại, hệ thống tránh được timeout, giảm tải cho Lambda/API Gateway, có buffer chống spike bằng SQS, có retry và DLQ để debug job lỗi.
 
-### 4.3 Bảo mật tại cổng (Edge Security): WAF + Cognito
-- **Quyết định:** Không để phần backend (Lambda) tự lo bảo mật. Chuyển toàn bộ trọng trách phòng thủ ra lớp biên mạng (Edge Layer).
-- **Lý do & Tác dụng Giảm tải:** 
-  - **AWS WAF (gắn tại CloudFront):** Chặn đứng các đòn tấn công phổ biến (DDoS, SQL Injection) và giới hạn Rate Limiting ngay từ "ngoài cửa".
-  - **Cognito JWT Authorizer (gắn tại API Gateway):** Từ chối ngay lập tức các request mạo danh, không có token hợp lệ.
-  - **Kết quả:** Thay vì để Request rác lọt vào trong đánh thức Lambda (gây tốn tiền Compute vô ích), kiến trúc này tiêu diệt hiểm họa từ vòng gửi xe. **Tiết kiệm 100% chi phí xử lý request rác!**
+### 4.2 Decision 2: Chọn RDS PostgreSQL thay vì DynamoDB cho phân tích giao dịch
 
-### 4.4 Lựa chọn Compute: Lambda vs. ECS vs. EC2
+**DECISION:**  
+Nhóm chọn Amazon RDS PostgreSQL (Single-AZ cho Primary kết hợp với 1 Read Replica ở AZ khác) để lưu transactions, categories và dữ liệu phân tích chi tiêu của người dùng.
 
-- **Phương án đã cân nhắc:**
+**ALTERNATIVES CONSIDERED:**
+- **DynamoDB:** loại bỏ vì BudgetBot cần các truy vấn phân tích như tổng chi tiêu theo category/tháng, `GROUP BY`, `SUM`, `COUNT`, lọc theo thời gian. Nếu dùng DynamoDB, các truy vấn này dễ phải scan hoặc cần thiết kế nhiều GSI/phụ trợ phức tạp.
+- **Lưu dữ liệu giao dịch trong S3 dạng file:** loại bỏ vì frontend cần đọc lại dữ liệu có cấu trúc, cập nhật category và hiển thị dashboard nhanh qua `/summary` và `/transactions`.
 
-  | Tiêu chí | **AWS Lambda** *(Chọn)* | ECS Fargate | EC2 |
-  |---|---|---|---|
-  | Chi phí khi không có traffic | **$0** (Scale-to-Zero) | ~$1.5/ngày (task chạy liên tục) | ~$2-5/ngày (instance luôn chạy) |
-  | Thời gian setup | **Thấp** | Trung bình (cần cluster, task def.) | Cao (cần provision, patch OS) |
-  | Quản lý hạ tầng | **Không cần** | Một phần | Toàn bộ |
-  | Phù hợp tải Hackathon | **Rất cao** | Trung bình | Thấp |
+**MEASUREMENT:**
+- Một file test đã được xử lý thành công và insert `83` dòng giao dịch vào RDS, thể hiện qua custom metric `RowsInserted`.
+- Dashboard CloudWatch theo dõi `DatabaseConnections` để phát hiện áp lực connection từ Lambda vào PostgreSQL.
+- Cost Explorer ghi nhận RDS là cost driver lớn nhất, khoảng `$3.80`, nhưng đây là chi phí được chấp nhận để đổi lấy truy vấn SQL và dữ liệu persistent.
 
-- **Lý do quyết định chọn Lambda:**
-  1. **Tối ưu chi phí tuyệt đối cho môi trường Hackathon:** Hệ thống chỉ phát sinh chi phí compute khi thực sự có request. Trong 48H, phần lớn thời gian không có traffic → ECS/EC2 sẽ lãng phí ngân sách.
-  2. **Xử lý Docker Image:** Nhóm đóng gói FastAPI thành Docker Container để vượt giới hạn code 250MB, đồng thời tận dụng khả năng Scale-to-Zero mà ECS không có.
-  3. **Tích hợp Event-driven tự nhiên:** Lambda kết nối trực tiếp với SQS Trigger — mỗi message trong hàng đợi tự động kích hoạt một Lambda Worker độc lập mà không cần code orchestration phức tạp như ECS Tasks.
+**EVIDENCE:**
+![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.jpg)
+![AWS Cost Explorer](./image/evidence-cost-explorer.png)
+
+**TRADE-OFF ACCEPTED:**
+- RDS có chi phí cố định và cần quản lý connection tốt hơn DynamoDB.
+- Nhóm chấp nhận trade-off này vì dữ liệu tài chính cần truy vấn phân tích quan hệ, tổng hợp theo tháng/category và đọc lại qua nhiều phiên làm việc. Việc kết hợp Single-AZ Primary và Read Replica chéo AZ giúp giảm tải đọc hiệu năng cao và có dự phòng nhưng vẫn tối ưu chi phí hơn Multi-AZ Standby đắt tiền.
+
+### 4.3 Decision 3: Chọn Lambda container image thay vì ECS/EC2 cho backend compute
+
+**DECISION:**  
+Nhóm chọn AWS Lambda chạy container image để triển khai FastAPI backend qua Mangum.
+
+**ALTERNATIVES CONSIDERED:**
+- **EC2:** loại bỏ vì instance phải chạy liên tục, cần tự quản lý OS, security patch, deployment và scaling.
+- **ECS Fargate:** loại bỏ vì cần cluster/task definition/service phức tạp hơn và task thường có chi phí duy trì cao hơn cho demo hackathon.
+- **Lambda ZIP package:** loại bỏ vì backend cần thư viện xử lý PDF/AI có thể vượt giới hạn package truyền thống.
+
+**MEASUREMENT:**
+- Lambda chạy được cả API Gateway routes và SQS worker trong cùng một container image.
+- Lambda Duration và Errors được theo dõi trên CloudWatch Dashboard.
+- ECR được dùng làm nơi lưu container image để deploy Lambda backend.
+
+**EVIDENCE:**
+![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.jpg)
+![CI/CD Success](./image/cicd-success.png)
+
+**TRADE-OFF ACCEPTED:**
+- Lambda có cold start và giới hạn runtime, không phù hợp với job cực dài.
+- Nhóm giảm rủi ro này bằng cách đưa job lớn vào SQS async, theo dõi Lambda Duration và dùng DLQ cho failure handling.
+
+### 4.4 Decision 4: Bảo mật tại cổng (Edge Security): WAF + Cognito
+
+**DECISION:**  
+Nhóm quyết định không để phần backend (Lambda) tự lo bảo mật. Thay vào đó, chuyển toàn bộ trách nhiệm phòng thủ ra lớp biên mạng (Edge Layer) bằng sự kết hợp của AWS WAF (gắn tại CloudFront CDN) và Cognito JWT Authorizer (gắn tại API Gateway).
+
+**ALTERNATIVES CONSIDERED:**
+- **Lambda tự thực hiện xác thực và lọc IP/rate limit:** loại bỏ vì request rác/tấn công vẫn đánh thức Lambda (gây tốn tiền Compute vô ích do Lambda scale up) và làm tăng tải cho backend một cách không cần thiết.
+- **Không dùng WAF:** loại bỏ vì ứng dụng tài chính dễ là mục tiêu của các cuộc tấn công DDoS hoặc SQL Injection, cần bảo vệ ngay từ biên mạng.
+
+**MEASUREMENT:**
+- Chỉ các request có JSON Web Token (JWT) hợp lệ từ Cognito mới được API Gateway cho phép đi tiếp vào Lambda. Các request mạo danh hoặc thiếu token bị chặn đứng ở vòng ngoài (trả về 401 Unauthorized ngay tại cổng).
+- AWS WAF được cấu hình theo dõi các luật chặn DDoS và Rate Limiting ở CloudFront.
+- Dashboard CloudWatch theo dõi tỷ lệ lỗi và số lượng request qua API Gateway.
+
+**EVIDENCE:**
+![API Gateway JWT Authorizer](./image/api-gateway-authorizer.png)
+![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.jpg)
+
+**TRADE-OFF ACCEPTED:**
+- Tăng độ phức tạp khi cấu hình JWT Authorizer trên API Gateway và thiết lập tích hợp WAF với CloudFront.
+- Đổi lại, kiến trúc này tiêu diệt hiểm họa từ vòng gửi xe, bảo vệ tuyệt đối backend bên trong và tiết kiệm 100% chi phí xử lý request rác.
 
 ---
 
@@ -187,77 +242,7 @@ Dưới đây là chi tiết luồng hoạt động kỹ thuật và các quyế
 ### 6.2 Bằng chứng AWS Cost Explorer
 ![AWS Cost Explorer](./image/evidence-cost-explorer.png)
 
-### 6.3 Measurement & Decisions — Các quyết định kiến trúc chính
 
-#### Decision 1: Dùng S3 Presigned URL + `/enqueue` + SQS async thay vì upload/xử lý đồng bộ qua Lambda
-
-**DECISION:**  
-Nhóm chọn luồng xử lý file lớn bằng S3 Presigned URL kết hợp `/enqueue` và Amazon SQS. Frontend gọi `/upload-request` để nhận presigned URL, upload file trực tiếp lên S3, sau đó gọi `/enqueue` để Lambda gửi job vào SQS Process Queue. SQS Event Source Mapping trigger lại cùng Lambda ở worker mode để xử lý file bất đồng bộ.
-
-**ALTERNATIVES CONSIDERED:**
-- **Upload và xử lý trực tiếp qua `/upload`:** loại bỏ vì file CSV/PDF lớn và quá trình gọi AI/ghi RDS có thể vượt thời gian chờ của API Gateway/Lambda, làm người dùng phải chờ lâu hoặc gặp timeout.
-- **S3 Event Notification trực tiếp vào SQS:** loại bỏ trong phạm vi hiện tại vì `/enqueue` giúp frontend nhận `job_id`, truyền rõ `user_id`, `s3_key`, `filename` và dễ theo dõi trạng thái job/polling hơn.
-
-**MEASUREMENT:**
-- Custom metric `RowsInserted` ghi nhận một job xử lý thành công đã insert `83` dòng giao dịch vào RDS.
-- Custom metrics `UploadJobCreated`, `UploadJobSucceeded`, `SQSMessageProcessed` xuất hiện trong namespace `BudgetBot/W7`, chứng minh workflow async đã chạy end-to-end.
-- Alarm `SQS ApproximateAgeOfOldestMessage` đã vào trạng thái ALARM trong quá trình test, chứng minh hệ thống phát hiện được job bị kẹt/backlog trong queue.
-- DLQ có message trong test lỗi có kiểm soát, chứng minh cơ chế retry và failure handling hoạt động.
-
-**EVIDENCE:**
-![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.jpg)
-![Bằng chứng SQS Queues](./image/evidence-sqs-queues.png)
-
-**TRADE-OFF ACCEPTED:**
-- Luồng xử lý phức tạp hơn vì frontend phải thực hiện 3 bước: xin presigned URL, upload file lên S3, rồi gọi `/enqueue`.
-- Đổi lại, hệ thống tránh được timeout, giảm tải cho Lambda/API Gateway, có buffer chống spike bằng SQS, có retry và DLQ để debug job lỗi.
-
-#### Decision 2: Chọn RDS PostgreSQL thay vì DynamoDB cho phân tích giao dịch
-
-**DECISION:**  
-Nhóm chọn Amazon RDS PostgreSQL (Single-AZ cho Primary kết hợp với 1 Read Replica ở AZ khác) để lưu transactions, categories và dữ liệu phân tích chi tiêu của người dùng.
-
-**ALTERNATIVES CONSIDERED:**
-- **DynamoDB:** loại bỏ vì BudgetBot cần các truy vấn phân tích như tổng chi tiêu theo category/tháng, `GROUP BY`, `SUM`, `COUNT`, lọc theo thời gian. Nếu dùng DynamoDB, các truy vấn này dễ phải scan hoặc cần thiết kế nhiều GSI/phụ trợ phức tạp.
-- **Lưu dữ liệu giao dịch trong S3 dạng file:** loại bỏ vì frontend cần đọc lại dữ liệu có cấu trúc, cập nhật category và hiển thị dashboard nhanh qua `/summary` và `/transactions`.
-
-**MEASUREMENT:**
-- Một file test đã được xử lý thành công và insert `83` dòng giao dịch vào RDS, thể hiện qua custom metric `RowsInserted`.
-- Dashboard CloudWatch theo dõi `DatabaseConnections` để phát hiện áp lực connection từ Lambda vào PostgreSQL.
-- Cost Explorer ghi nhận RDS là cost driver lớn nhất, khoảng `$3.80`, nhưng đây là chi phí được chấp nhận để đổi lấy truy vấn SQL và dữ liệu persistent.
-
-**EVIDENCE:**
-![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.jpg)
-![AWS Cost Explorer](./image/evidence-cost-explorer.png)
-
-**TRADE-OFF ACCEPTED:**
-- RDS có chi phí cố định và cần quản lý connection tốt hơn DynamoDB.
-- Nhóm chấp nhận trade-off này vì dữ liệu tài chính cần truy vấn phân tích quan hệ, tổng hợp theo tháng/category và đọc lại qua nhiều phiên làm việc. Việc kết hợp Single-AZ Primary và Read Replica chéo AZ giúp giảm tải đọc hiệu năng cao và có dự phòng nhưng vẫn tối ưu chi phí hơn Multi-AZ Standby đắt tiền.
-
-#### Decision 3: Chọn Lambda container image thay vì ECS/EC2 cho backend compute
-
-**DECISION:**  
-Nhóm chọn AWS Lambda chạy container image để triển khai FastAPI backend qua Mangum.
-
-**ALTERNATIVES CONSIDERED:**
-- **EC2:** loại bỏ vì instance phải chạy liên tục, cần tự quản lý OS, security patch, deployment và scaling.
-- **ECS Fargate:** loại bỏ vì cần cluster/task definition/service phức tạp hơn và task thường có chi phí duy trì cao hơn cho demo hackathon.
-- **Lambda ZIP package:** loại bỏ vì backend cần thư viện xử lý PDF/AI có thể vượt giới hạn package truyền thống.
-
-**MEASUREMENT:**
-- Lambda chạy được cả API Gateway routes và SQS worker trong cùng một container image.
-- Lambda Duration và Errors được theo dõi trên CloudWatch Dashboard.
-- ECR được dùng làm nơi lưu container image để deploy Lambda backend.
-
-**EVIDENCE:**
-![CloudWatch Dashboard](./image/CloudWatch%20Dashboard.jpg)
-![CI/CD Success](./image/cicd-success.png)
-
-**TRADE-OFF ACCEPTED:**
-- Lambda có cold start và giới hạn runtime, không phù hợp với job cực dài.
-- Nhóm giảm rủi ro này bằng cách đưa job lớn vào SQS async, theo dõi Lambda Duration và dùng DLQ cho failure handling.
-
----
 
 ## 7. Triển khai Bảo mật (Security First)
 
